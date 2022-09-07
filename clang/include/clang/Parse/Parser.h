@@ -38,6 +38,7 @@ namespace clang {
   class DeclGroupRef;
   class DiagnosticBuilder;
   struct LoopHint;
+  struct PlussHint;
   class Parser;
   class ParsingDeclRAIIObject;
   class ParsingDeclSpec;
@@ -197,6 +198,7 @@ class Parser : public CodeCompletionHandler {
   std::unique_ptr<PragmaHandler> CUDAForceHostDeviceHandler;
   std::unique_ptr<PragmaHandler> OptimizeHandler;
   std::unique_ptr<PragmaHandler> LoopHintHandler;
+  std::unique_ptr<PragmaHandler> PlussHintHandler;
   std::unique_ptr<PragmaHandler> UnrollHintHandler;
   std::unique_ptr<PragmaHandler> NoUnrollHintHandler;
   std::unique_ptr<PragmaHandler> UnrollAndJamHintHandler;
@@ -764,6 +766,10 @@ private:
   /// Handle the annotation token produced for
   /// #pragma clang loop and #pragma unroll.
   bool HandlePragmaLoopHint(LoopHint &Hint);
+
+  /// Handle the annotation token produced for
+  /// #pragma pluss.
+  bool HandlePragmaPlussHint(PlussHint &Hint);
 
   bool ParsePragmaAttributeSubjectMatchRuleSet(
       attr::ParsedSubjectMatchRuleSet &SubjectMatchRules,
@@ -2086,6 +2092,11 @@ private:
   StmtResult ParseAsmStatement(bool &msAsm);
   StmtResult ParseMicrosoftAsmStatement(SourceLocation AsmLoc);
   StmtResult ParsePragmaLoopHint(StmtVector &Stmts,
+                                 ParsedStmtContext StmtCtx,
+                                 SourceLocation *TrailingElseLoc,
+                                 ParsedAttributesWithRange &Attrs);
+
+  StmtResult ParsePragmaPlussHint(StmtVector &Stmts,
                                  ParsedStmtContext StmtCtx,
                                  SourceLocation *TrailingElseLoc,
                                  ParsedAttributesWithRange &Attrs);

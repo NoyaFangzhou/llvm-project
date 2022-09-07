@@ -421,9 +421,23 @@ MDNode *LoopInfo::createMetadata(
   assert(!!AccGroup == Attrs.IsParallel &&
          "There must be an access group iff the loop is parallel");
   if (Attrs.IsParallel) {
+    LoopProperties.push_back(
+        MDNode::get(Ctx, {MDString::get(Ctx, "llvm.loop.parallel_accesses")}));
+  }
+
+  if (Attrs.IsPlussParallel) {
     LLVMContext &Ctx = Header->getContext();
     LoopProperties.push_back(MDNode::get(
-        Ctx, {MDString::get(Ctx, "llvm.loop.parallel_accesses"), AccGroup}));
+        Ctx, {MDString::get(Ctx, "llvm.loop.pluss.parallel")}));
+  }
+
+  if (Attrs.LoopBoundHint > 0) {
+    LLVMContext &Ctx = Header->getContext();
+    LoopProperties.push_back(MDNode::get(
+        Ctx, {MDString::get(Ctx, "llvm.loop.pluss.bound"),
+              ConstantAsMetadata::get(ConstantInt::get(
+                  llvm::Type::getInt32Ty(Ctx), Attrs.LoopBoundHint)),
+              AccGroup}));
   }
 
   LoopProperties.insert(LoopProperties.end(), AdditionalLoopProperties.begin(),
@@ -432,16 +446,18 @@ MDNode *LoopInfo::createMetadata(
 }
 
 LoopAttributes::LoopAttributes(bool IsParallel)
-    : IsParallel(IsParallel), VectorizeEnable(LoopAttributes::Unspecified),
+    : IsParallel(IsParallel), IsPlussParallel(false), VectorizeEnable(LoopAttributes::Unspecified),
       UnrollEnable(LoopAttributes::Unspecified),
       UnrollAndJamEnable(LoopAttributes::Unspecified),
       VectorizePredicateEnable(LoopAttributes::Unspecified), VectorizeWidth(0),
       InterleaveCount(0), UnrollCount(0), UnrollAndJamCount(0),
       DistributeEnable(LoopAttributes::Unspecified), PipelineDisabled(false),
-      PipelineInitiationInterval(0) {}
+
+      PipelineInitiationInterval(0), LoopBoundHint(0) {}
 
 void LoopAttributes::clear() {
   IsParallel = false;
+  IsPlussParallel = false;
   VectorizeWidth = 0;
   InterleaveCount = 0;
   UnrollCount = 0;
@@ -453,6 +469,7 @@ void LoopAttributes::clear() {
   DistributeEnable = LoopAttributes::Unspecified;
   PipelineDisabled = false;
   PipelineInitiationInterval = 0;
+  LoopBoundHint = 0;
 }
 
 LoopInfo::LoopInfo(BasicBlock *Header, const LoopAttributes &Attrs,
@@ -467,7 +484,8 @@ LoopInfo::LoopInfo(BasicBlock *Header, const LoopAttributes &Attrs,
     AccGroup = MDNode::getDistinct(Ctx, {});
   }
 
-  if (!Attrs.IsParallel && Attrs.VectorizeWidth == 0 &&
+  if (!Attrs.IsParallel && !Attrs.IsPlussParallel && Attrs.VectorizeWidth == 0 &&
+      Attrs.VectorizeScalable == LoopAttributes::Unspecified &&
       Attrs.InterleaveCount == 0 && Attrs.UnrollCount == 0 &&
       Attrs.UnrollAndJamCount == 0 && !Attrs.PipelineDisabled &&
       Attrs.PipelineInitiationInterval == 0 &&
@@ -476,7 +494,7 @@ LoopInfo::LoopInfo(BasicBlock *Header, const LoopAttributes &Attrs,
       Attrs.UnrollEnable == LoopAttributes::Unspecified &&
       Attrs.UnrollAndJamEnable == LoopAttributes::Unspecified &&
       Attrs.DistributeEnable == LoopAttributes::Unspecified && !StartLoc &&
-      !EndLoc)
+      !EndLoc && Attrs.LoopBoundHint == 0 && !Attrs.MustProgress)
     return;
 
   TempLoopID = MDNode::getTemporary(Header->getContext(), None);
@@ -584,10 +602,33 @@ void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
     const LoopHintAttr *LH = dyn_cast<LoopHintAttr>(Attr);
     const OpenCLUnrollHintAttr *OpenCLHint =
         dyn_cast<OpenCLUnrollHintAttr>(Attr);
-
+    const PlussAttr *PH = dyn_cast<PlussAttr>(Attr);
     // Skip non loop hint attributes
-    if (!LH && !OpenCLHint) {
+    if (!LH && !OpenCLHint && !PH) {
       continue;
+    }
+
+    if (PH) {
+      auto *ValueExpr = PH->getValue();
+      PlussAttr::OptionType Option = PH->getOption();
+      switch (Option) {
+      case PlussAttr::LoopBound: {
+        if (ValueExpr) {
+          setPlussLoopBoundHint(
+              ValueExpr->EvaluateKnownConstInt(Ctx).getSExtValue());
+        }
+        break;
+      }
+      case PlussAttr::Parallel:
+        setPlussParallel(true);
+        break;
+      default:
+        break;
+      }
+      continue;
+    } else {
+      setPlussParallel(false);
+      setPlussLoopBoundHint(0);
     }
 
     LoopHintAttr::OptionType Option = LoopHintAttr::Unroll;

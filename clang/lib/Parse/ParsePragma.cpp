@@ -15,6 +15,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Parse/LoopHint.h"
+#include "clang/Parse/PlussHint.h"
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/Parse/Parser.h"
 #include "clang/Parse/RAIIObjectsForParser.h"
@@ -227,6 +228,13 @@ struct PragmaLoopHintHandler : public PragmaHandler {
                     Token &FirstToken) override;
 };
 
+/// PragmaPlussHandler - "\#pragma pluss on/off".
+struct PragmaPlussHandler : public PragmaHandler {
+  PragmaPlussHandler() : PragmaHandler("pluss") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
 struct PragmaUnrollHintHandler : public PragmaHandler {
   PragmaUnrollHintHandler(const char *name) : PragmaHandler(name) {}
   void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
@@ -398,6 +406,9 @@ void Parser::initializePragmaHandlers() {
       std::make_unique<PragmaUnrollHintHandler>("nounroll_and_jam");
   PP.AddPragmaHandler(NoUnrollAndJamHintHandler.get());
 
+  PlussHintHandler = std::make_unique<PragmaPlussHandler>();
+  PP.AddPragmaHandler(PlussHintHandler.get());
+
   FPHandler = std::make_unique<PragmaFPHandler>();
   PP.AddPragmaHandler("clang", FPHandler.get());
 
@@ -511,6 +522,9 @@ void Parser::resetPragmaHandlers() {
 
   PP.RemovePragmaHandler(NoUnrollAndJamHintHandler.get());
   NoUnrollAndJamHintHandler.reset();
+
+  PP.RemovePragmaHandler(PlussHintHandler.get());
+  PlussHintHandler.reset();
 
   PP.RemovePragmaHandler("clang", FPHandler.get());
   FPHandler.reset();
@@ -1190,6 +1204,74 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
     Hint.ValueExpr = R.get();
   }
 
+  Hint.Range = SourceRange(Info->PragmaName.getLocation(),
+                           Info->Toks.back().getLocation());
+  return true;
+}
+
+namespace {
+struct PragmaPlussHintInfo {
+  Token PragmaName;
+  Token Option;
+  ArrayRef<Token> Toks;
+};
+} // end anonymous namespace
+static std::string PragmaPlussHintString(Token PragmaName, Token Option) {
+  StringRef Str = PragmaName.getIdentifierInfo()->getName();
+  return std::string(llvm::StringSwitch<StringRef>(Str)
+                         .Case("pluss", Str)
+                         .Default(""));
+}
+
+bool Parser::HandlePragmaPlussHint(PlussHint &Hint) {
+  assert(Tok.is(tok::annot_pragma_pluss_hint));
+  PragmaPlussHintInfo *Info =
+      static_cast<PragmaPlussHintInfo *>(Tok.getAnnotationValue());
+
+  IdentifierInfo *PragmaNameInfo = Info->PragmaName.getIdentifierInfo();
+  Hint.PragmaNameLoc = IdentifierLoc::create(
+      Actions.Context, Info->PragmaName.getLocation(), PragmaNameInfo);
+  IdentifierInfo *OptionInfo = Info->Option.is(tok::identifier)
+                               ? Info->Option.getIdentifierInfo()
+                               : nullptr;
+  Hint.OptionLoc = IdentifierLoc::create(
+      Actions.Context, Info->Option.getLocation(), OptionInfo);
+
+  bool OptionEnable = OptionInfo && OptionInfo->isStr("on");
+  bool OptionDisable = OptionInfo && OptionInfo->isStr("off");
+  bool OptionParallel = OptionInfo && OptionInfo->isStr("parallel");
+  bool OptionArray = OptionInfo && OptionInfo->isStr("array");
+  bool OptionLoopBoundHint = OptionInfo && OptionInfo->isStr("bound");
+
+  llvm::ArrayRef<Token> Toks = Info->Toks;
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/false,
+      /*IsReinject=*/false);
+  ConsumeAnnotationToken();
+
+  if (OptionEnable || OptionDisable || OptionParallel) {
+    // do nothing
+  } else if (OptionArray) {
+    // stores the array name
+  } else if (OptionLoopBoundHint) {
+    ExprResult R = ParseConstantExpression();
+    if (R.isInvalid())
+      return false;
+    // Argument is a constant expression with an integer type.
+    Hint.ValueExpr = R.get();
+  } else {
+      Diag(Tok.getLocation(), diag::err_pragma_pluss_invalid_option)
+          << PragmaLoopHintString(Info->PragmaName, Info->Option);
+  }
+
+  // Tokens following an error in an ill-formed constant expression will
+  // remain in the token stream and must be removed.
+  if (Tok.isNot(tok::eof)) {
+    Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
+        << PragmaLoopHintString(Info->PragmaName, Info->Option);
+    while (Tok.isNot(tok::eof))
+      ConsumeAnyToken();
+  }
+  ConsumeToken(); // Consume the constant expression eof terminator.
   Hint.Range = SourceRange(Info->PragmaName.getLocation(),
                            Info->Toks.back().getLocation());
   return true;
@@ -2640,6 +2722,133 @@ void PragmaFloatControlHandler::HandlePragma(Preprocessor &PP,
       static_cast<uintptr_t>((Action << 16) | (Kind & 0xFFFF))));
   PP.EnterTokenStream(std::move(TokenArray), 1,
                       /*DisableMacroExpansion=*/false, /*IsReinject=*/false);
+}
+
+/// Parses pluss pragma hint value and fills in Info.
+static bool ParsePlussHintValue(Preprocessor &PP, Token &Tok, Token PragmaName,
+                               Token Option, bool ValueInParens,
+                               PragmaPlussHintInfo &Info) {
+  SmallVector<Token, 16> ValueList;
+  int OpenParens = ValueInParens ? 1 : 0;
+  int ValueCnt = 0;
+  // Read constant expression, separated by ','.
+  while (ValueInParens && Tok.isNot(tok::eod)) {
+    if (Tok.is(tok::l_paren))
+      OpenParens++;
+    else if (Tok.is(tok::r_paren)) {
+      OpenParens--;
+      if (OpenParens == 0 && ValueInParens)
+        break;
+    }
+    else if (Tok.is(tok::comma)) {
+      // Read ','
+      PP.Lex(Tok);
+      continue;
+    }
+    ValueList.push_back(Tok);
+    PP.Lex(Tok);
+  }
+
+
+  printf("%lu arguments enclosed in '(...)'\n", ValueList.size());
+
+  if (ValueInParens) {
+    // Read ')'
+    if (Tok.isNot(tok::r_paren)) {
+      PP.Diag(Tok.getLocation(), diag::err_expected) << tok::r_paren;
+      return false;
+    }
+    PP.Lex(Tok);
+  }
+  Token EOFTok;
+  EOFTok.startToken();
+  EOFTok.setKind(tok::eof);
+  EOFTok.setLocation(Tok.getLocation());
+  ValueList.push_back(EOFTok); // Terminates expression for parsing.
+
+  Info.Toks = llvm::makeArrayRef(ValueList).copy(PP.getPreprocessorAllocator());
+
+  Info.PragmaName = PragmaName;
+  Info.Option = Option;
+  return true;
+}
+/// Handle the Locality analysis \#pragma pluss
+///  #pragma 'pluss' pluss-keywords[opt]
+///  #pragma 'pluss' array '(' array-names ')'
+///  #pragma 'pluss' bound '(' loop-bounds ')'
+///
+/// pluss-keywords:
+///    'on'
+///    'off'
+///    'parallel'
+///    'bound'
+///
+/// array-names:
+///     const-express (the name of the array)
+/// loop-bounds:
+///     const-express (the number of iterations)
+///
+/// Specifying 'pluss on' instructs llvm to
+/// start profiling addresses by instrumenting func calls below each
+/// array accesses.
+/// Specifying pluss array(_value_) instructs llvm to profile
+/// array in _value_ only. Profiling all arrays if _value is null.
+/// Specifying 'pluss off' to stop the instrumentation
+void PragmaPlussHandler::HandlePragma(Preprocessor &PP,
+                                      PragmaIntroducer Introducer,
+                                      Token &FirstToken) {
+  // Incoming token is "pluss" from "#pragma pluss".
+  Token PragmaName = FirstToken;
+  SmallVector<Token, 1> TokenList;
+
+  // Lex the optimization option and verify it is an identifier.
+  PP.Lex(FirstToken);
+  if (FirstToken.isNot(tok::identifier)) {
+    PP.Diag(FirstToken.getLocation(), diag::err_pragma_pluss_invalid_option)
+        << /*MissingOption=*/true << "";
+    return;
+  }
+
+  Token Option = FirstToken;
+  IdentifierInfo *OptionInfo = FirstToken.getIdentifierInfo();
+  bool OptionValid = llvm::StringSwitch<bool>(OptionInfo->getName())
+      .Case("bound", true)
+      .Cases("on", "off", "array", "parallel", true)
+      .Default(false);
+  if (!OptionValid) {
+    PP.Diag(FirstToken.getLocation(), diag::err_pragma_pluss_invalid_option)
+        << /*MissingOption=*/false << OptionInfo;
+    return;
+  }
+  bool HasArgument = llvm::StringSwitch<bool>(OptionInfo->getName())
+      .Case("bound", true)
+      .Case("array", true)
+      .Default(false);
+  PP.Lex(FirstToken);
+
+  // Read '('
+  if (HasArgument)
+    PP.Lex(FirstToken);
+
+  auto *Info = new (PP.getPreprocessorAllocator()) PragmaPlussHintInfo;
+  if (!ParsePlussHintValue(PP, FirstToken, PragmaName, Option, /*ValueInParens=*/HasArgument,
+                          *Info))
+    return;
+
+  // Generate the loop hint token.
+  Token PlussHintTok;
+  PlussHintTok.startToken();
+  PlussHintTok.setKind(tok::annot_pragma_pluss_hint);
+  PlussHintTok.setLocation(Introducer.Loc);
+  PlussHintTok.setAnnotationEndLoc(PragmaName.getLocation());
+  PlussHintTok.setAnnotationValue(static_cast<void *>(Info));
+  TokenList.push_back(PlussHintTok);
+
+  auto TokenArray = std::make_unique<Token[]>(TokenList.size());
+  std::copy(TokenList.begin(), TokenList.end(), TokenArray.get());
+
+  PP.EnterTokenStream(std::move(TokenArray), TokenList.size(),
+      /*DisableMacroExpansion=*/false, /*IsReinject=*/false);
 }
 
 /// Handle the Microsoft \#pragma detect_mismatch extension.

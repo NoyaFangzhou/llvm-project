@@ -75,6 +75,13 @@ struct LoopAttributes {
 
   /// Value for llvm.loop.pipeline.iicount metadata.
   unsigned PipelineInitiationInterval;
+
+  /// llvm.pluss.parallel
+  bool IsPlussParallel;
+
+  /// Value for llvm.pluss.bound metadat
+  unsigned LoopBoundHint;
+
 };
 
 /// Information used when generating a structured loop.
@@ -272,6 +279,11 @@ public:
     StagedAttrs.PipelineInitiationInterval = C;
   }
 
+  /// Set the PLUSS parallel state.
+  void setPlussParallel(bool isPluss) { StagedAttrs.IsPlussParallel = isPluss; }
+  void setPlussLoopBoundHint(unsigned LoopBoundHint) {
+    StagedAttrs.LoopBoundHint = LoopBoundHint;
+  }
 private:
   /// Returns true if there is LoopInfo on the stack.
   bool hasInfo() const { return !Active.empty(); }

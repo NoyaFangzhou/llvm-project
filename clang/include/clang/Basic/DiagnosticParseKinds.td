@@ -1346,6 +1346,15 @@ def err_pragma_loop_invalid_option : Error<
   "vectorize_width, interleave, interleave_count, unroll, unroll_count, "
   "pipeline, pipeline_initiation_interval, vectorize_predicate, or distribute">;
 
+// Pragma pluss support.
+def warn_pragma_pluss_missing_argument : Warning<
+  "no array is specified in 'array', all array will be profiled">;
+def err_pragma_pluss_invalid_option : Error<
+  "%select{invalid|missing}0 option%select{ %1|}0; expected on, "
+  "off, or array">;
+def err_pragma_pluss_missing_argument: Error<
+  "no loop bound given after 'bound'">;
+
 def err_pragma_fp_invalid_option : Error<
   "%select{invalid|missing}0 option%select{ %1|}0; expected 'contract' or 'reassociate'">;
 def err_pragma_fp_invalid_argument : Error<

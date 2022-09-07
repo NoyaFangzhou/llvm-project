@@ -15,6 +15,7 @@
 #include "clang/Basic/Attributes.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Parse/LoopHint.h"
+#include "clang/Parse/PlussHint.h"
 #include "clang/Parse/Parser.h"
 #include "clang/Parse/RAIIObjectsForParser.h"
 #include "clang/Sema/DeclSpec.h"
@@ -414,6 +415,10 @@ Retry:
   case tok::annot_pragma_attribute:
     HandlePragmaAttribute();
     return StmtEmpty();
+
+  case tok::annot_pragma_pluss_hint:
+    ProhibitAttributes(Attrs);
+    return ParsePragmaPlussHint(Stmts, StmtCtx, TrailingElseLoc, Attrs);
   }
 
   // If we reached this code, the statement must end in a semicolon.
@@ -2212,6 +2217,49 @@ StmtResult Parser::ParsePragmaLoopHint(StmtVector &Stmts,
 
   // Start of attribute range may already be set for some invalid input.
   // See PR46336.
+  if (Attrs.Range.getBegin().isInvalid())
+    Attrs.Range.setBegin(StartLoc);
+
+  return S;
+}
+
+StmtResult Parser::ParsePragmaPlussHint(StmtVector &Stmts,
+                                        ParsedStmtContext StmtCtx,
+                                        SourceLocation *TrailingElseLoc,
+                                        ParsedAttributesWithRange &Attrs) {
+  // Create temporary attribute list.
+  ParsedAttributesWithRange TempAttrs(AttrFactory);
+
+  SourceLocation StartLoc = Tok.getLocation();
+
+  // Get loop hints and consume annotated token.
+  while (Tok.is(tok::annot_pragma_pluss_hint)) {
+    PlussHint Hint;
+    if (!HandlePragmaPlussHint(Hint))
+      continue;
+
+    if (Hint.OptionLoc->Ident->getName() == "array") {
+      // do nothing
+      // currently, we does not support array pragma
+    } else {
+      ArgsUnion ArgHints[] = {Hint.PragmaNameLoc, Hint.OptionLoc, Hint.StateLoc,
+                              ArgsUnion(Hint.ValueExpr)};
+      TempAttrs.addNew(Hint.PragmaNameLoc->Ident, Hint.Range, nullptr,
+                       Hint.PragmaNameLoc->Loc, ArgHints, 4,
+                       ParsedAttr::AS_Pragma);
+    }
+  }
+
+  // Get the next statement.
+  MaybeParseCXX11Attributes(Attrs);
+
+  StmtResult S = ParseStatementOrDeclarationAfterAttributes(
+      Stmts, StmtCtx, TrailingElseLoc, Attrs);
+
+  Attrs.takeAllFrom(TempAttrs);
+
+// Start of attribute range may already be set for some invalid input.
+// See PR46336.
   if (Attrs.Range.getBegin().isInvalid())
     Attrs.Range.setBegin(StartLoc);
 

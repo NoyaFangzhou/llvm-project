@@ -2321,6 +2321,10 @@ public:
   /// code.
   void EmitBranch(llvm::BasicBlock *Block);
 
+  // ADDED NEW PLUSS PRAGMA
+  void addPlussHintMetadata(llvm::BasicBlock *block,
+                            ArrayRef<const Attr *> PlussAttrs);
+
   /// HaveInsertPoint - True if an insertion point is defined. If not, this
   /// indicates that the current code being emitted is unreachable.
   bool HaveInsertPoint() const {
