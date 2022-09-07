@@ -173,6 +173,33 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
   return LoopHintAttr::CreateImplicit(S.Context, Option, State, ValueExpr, A);
 }
 
+static Attr *handlePlussHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
+                                SourceRange) {
+  IdentifierLoc *PragmaNameLoc = A.getArgAsIdent(0);
+  IdentifierLoc *OptionLoc = A.getArgAsIdent(1);
+  Expr *ValueExpr = A.getArgAsExpr(3);
+
+  bool PragmaOptionEnable = OptionLoc->Ident->getName() == "on";
+  bool PragmaOptionDisable = OptionLoc->Ident->getName() == "off";
+  bool PragmaOptionArray = OptionLoc->Ident->getName() == "array";
+  bool PragmaOptionParallel = OptionLoc->Ident->getName() == "parallel";
+  bool PragmaOptionLoopBound = OptionLoc->Ident->getName() == "bound";
+  PlussAttr::OptionType Option;
+  if (PragmaOptionEnable) {
+    Option = PlussAttr::ProfileOn;
+  } else if (PragmaOptionDisable) {
+    Option = PlussAttr::ProfileOff;
+  } else if (PragmaOptionParallel) {
+    Option = PlussAttr::Parallel;
+  } else if (PragmaOptionArray) {
+    Option = PlussAttr::ProfileArray;
+    //
+  } else if (PragmaOptionLoopBound) {
+    Option = PlussAttr::LoopBound;
+  }
+  return PlussAttr::CreateImplicit(S.Context, Option, ValueExpr, A);
+}
+
 namespace {
 class CallExprFinder : public ConstEvaluatedExprVisitor<CallExprFinder> {
   bool FoundCallExpr = false;
@@ -418,6 +445,8 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
     return handleSuppressAttr(S, St, A, Range);
   case ParsedAttr::AT_NoMerge:
     return handleNoMergeAttr(S, St, A, Range);
+  case ParsedAttr::AT_Pluss:
+    return handlePlussHintAttr(S, St, A, Range);
   case ParsedAttr::AT_MustTail:
     return handleMustTailAttr(S, St, A, Range);
   case ParsedAttr::AT_Likely:

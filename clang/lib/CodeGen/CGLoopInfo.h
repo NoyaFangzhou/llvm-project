@@ -79,6 +79,12 @@ struct LoopAttributes {
   /// Value for llvm.loop.pipeline.iicount metadata.
   unsigned PipelineInitiationInterval;
 
+  /// llvm.pluss.parallel
+  bool IsPlussParallel;
+
+  /// Value for llvm.pluss.bound metadat
+  unsigned LoopBoundHint;
+
   /// Value for whether the loop is required to make progress.
   bool MustProgress;
 };
@@ -280,6 +286,12 @@ public:
   /// Set the pipeline initiation interval.
   void setPipelineInitiationInterval(unsigned C) {
     StagedAttrs.PipelineInitiationInterval = C;
+  }
+
+  /// Set the PLUSS parallel state.
+  void setPlussParallel(bool isPluss) { StagedAttrs.IsPlussParallel = isPluss; }
+  void setPlussLoopBoundHint(unsigned LoopBoundHint) {
+    StagedAttrs.LoopBoundHint = LoopBoundHint;
   }
 
   /// Set no progress for the next loop pushed.

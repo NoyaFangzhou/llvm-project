@@ -3310,6 +3310,22 @@ for further details including limitations of the unroll hints.
   }];
 }
 
+def PlussHintDocs : Documentation {
+  let Category = DocCatStmt;
+  let Heading = "#pragma pluss";
+  let Content = [{
+The ``#pragma parallel pluss`` directive allows mark the start and end points in the IR to specific
+where to profile the memory accesses.
+
+profiled region would be enclosed within the on/off option:
+
+.. code-block:: c++
+
+#pragma parallel pluss on``
+... // some code
+  }];
+}
+
 def PipelineHintDocs : Documentation {
   let Category = DocCatStmt;
   let Heading = "#pragma clang loop pipeline, #pragma clang loop pipeline_initiation_interval";

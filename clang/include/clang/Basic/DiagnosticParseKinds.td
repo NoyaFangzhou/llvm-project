@@ -1452,6 +1452,15 @@ def note_pragma_loop_invalid_vectorize_option : Note<
   "vectorize_width loop hint malformed; use vectorize_width(X, fixed) or "
   "vectorize_width(X, scalable) where X is an integer, or vectorize_width('fixed' or 'scalable')">;
 
+// Pragma pluss support.
+def warn_pragma_pluss_missing_argument : Warning<
+  "no array is specified in 'array', all array will be profiled">;
+def err_pragma_pluss_invalid_option : Error<
+  "%select{invalid|missing}0 option%select{ %1|}0; expected on, "
+  "off, or array">;
+def err_pragma_pluss_missing_argument: Error<
+  "no loop bound given after 'bound'">;
+
 def err_pragma_fp_invalid_option : Error<
   "%select{invalid|missing}0 option%select{ %1|}0; expected 'contract', 'reassociate' or 'exceptions'">;
 def err_pragma_fp_invalid_argument : Error<

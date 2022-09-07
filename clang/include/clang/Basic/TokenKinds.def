@@ -880,6 +880,9 @@ PRAGMA_ANNOTATION(pragma_openmp_end)
 // handles #pragma loop ... directives.
 PRAGMA_ANNOTATION(pragma_loop_hint)
 
+// Annotations for PLUSS locality analysis
+PRAGMA_ANNOTATION(pragma_pluss_hint)
+
 PRAGMA_ANNOTATION(pragma_fp)
 
 // Annotation for the attribute pragma directives - #pragma clang attribute ...

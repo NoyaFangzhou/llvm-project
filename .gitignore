@@ -5,6 +5,7 @@
 # This file is intentionally different from the output of `git svn show-ignore`,
 # as most of those are useless.
 #==============================================================================#
+pluss_patch.patch
 
 #==============================================================================#
 # File extensions to be ignored anywhere in the tree.

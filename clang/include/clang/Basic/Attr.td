@@ -3552,6 +3552,30 @@ def LoopHint : Attr {
   let HasCustomParsing = 1;
 }
 
+def Pluss : Attr {
+  let Spellings = [Pragma<"", "pluss">];
+  let Args = [EnumArgument<"Option", "OptionType",
+                          ["on", "off", "array", "parallel", "bound"],
+                          ["ProfileOn", "ProfileOff", "ProfileArray", "Parallel", "LoopBound"]>,
+              ExprArgument<"Value">];
+  let AdditionalMembers = [{
+  static const char *getOptionName(int Option) {
+    switch(Option) {
+    case ProfileOn: return "on";
+    case ProfileOff: return "off";
+    case ProfileArray: return "array";
+    case Parallel: return "parallel";
+    case LoopBound: return "bound";
+    }
+    llvm_unreachable("Unhandled Pluss option.");
+  }
+    void printPrettyPragma(raw_ostream &OS, const PrintingPolicy &Policy) const {
+      return;
+    }
+  }];
+  let Documentation = [PlussHintDocs];
+}
+
 def CapturedRecord : InheritableAttr {
   // This attribute has no spellings as it is only ever created implicitly.
   let Spellings = [];

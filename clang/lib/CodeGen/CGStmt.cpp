@@ -53,6 +53,15 @@ void CodeGenFunction::EmitStmt(const Stmt *S, ArrayRef<const Attr *> Attrs) {
   assert(S && "Null statement?");
   PGO.setCurrentStmt(S);
 
+  // Emit
+  // Pragma Attribute
+  if (Attrs.size() > 0) {
+    if (Attrs[0]->getKind() == attr::Pluss)
+      addPlussHintMetadata(Builder.GetInsertBlock(), Attrs);
+  }
+
+
+
   // These statements have their own debug info handling.
   if (EmitSimpleStmt(S, Attrs))
     return;
@@ -541,6 +550,39 @@ void CodeGenFunction::EmitBlock(llvm::BasicBlock *BB, bool IsFinished) {
     CurFn->getBasicBlockList().push_back(BB);
   Builder.SetInsertPoint(BB);
 }
+
+/// ADDED NEW QUALITY PRAGMA
+void CodeGenFunction::addPlussHintMetadata(llvm::BasicBlock *Block,
+                                           ArrayRef<const Attr *> PlussAttrs) {
+  using namespace llvm;
+  if (PlussAttrs[0]->getKind() == attr::Pluss) {
+    const Attr *t = PlussAttrs[0];
+    const PlussAttr *attr = (const PlussAttr*)t;
+    ASTContext& AC = CGM.getContext();
+    Instruction *InstToInsert = nullptr;
+    std::string metadata_string;
+    if (attr->getOption() == PlussAttr::ProfileOn) {
+      InstToInsert = &*(Block->getFirstInsertionPt());
+      metadata_string = "pluss on ";
+
+    } else if (attr->getOption() == PlussAttr::ProfileOff) {
+      metadata_string = "pluss off ";
+      InstToInsert = &(Block->back());
+    } else if (attr->getOption() == PlussAttr::Parallel) {
+      printf("This is a Parallel attribute, will attach it to the for-loop later\n");
+      return;
+    } else if (attr->getOption() == PlussAttr::LoopBound) {
+      printf("This is a LoopBound attribute, will attach it to the for-loop later\n");
+      return;
+    }
+    if (!InstToInsert)
+      return;
+    LLVMContext& C = InstToInsert->getContext();
+    MDNode* N = MDNode::get(C, MDString::get(C, metadata_string));
+    InstToInsert->setMetadata("pluss", N);
+  }
+}
+/// FINISH NEW PLUSS PRAGMA
 
 void CodeGenFunction::EmitBranch(llvm::BasicBlock *Target) {
   // Emit a branch from the current block to the target one if this
