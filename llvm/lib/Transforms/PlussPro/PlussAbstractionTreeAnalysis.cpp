@@ -82,7 +82,7 @@ void PlussAbstractionTreeAnalysis::BuildPointerAliasMap()
       }
       // query RefNode and (*ref_iter) 's instruction to SVF/AliasAnalysis
       AliasResult result = AA->alias(RefNode->getBase(), (*ref_iter)->getBase());
-      if (result == MustAlias) {
+      if (result == AliasResult::MustAlias) {
         NumPointerAlias++;
         AliasPair.insert(make_pair(RefNode, *ref_iter));
       }
