@@ -3,17 +3,14 @@
 //
 
 #include "ReferenceAnalysis.h"
-#include "AccessGraphAnalysis.h"
 #include "InductionVarAnalysis.h"
 #include "LoopAnalysisWrapperPass.h"
 #include "PlussAbstractionTreeAnalysis.h"
-#include "ModelValidationAnalysis.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Analysis/DependenceAnalysis.h"
 #include "llvm/Transforms/Utils.h"
 #include <algorithm>
@@ -23,6 +20,7 @@
 namespace ReferenceAnalysis {
 
 DependenceInfo *DI = nullptr;
+DenseMap<SPSTNode *, string> SPSNodeNameTable;
 
 char ReferenceAnalysis::ID = 0;
 static RegisterPass<ReferenceAnalysis>
@@ -37,6 +35,7 @@ void ReferenceAnalysis::ReferenceDependenceAnalysis(LoopTNode *LN)
   QueryEngine->FindAllRefsInLoop(LN, References);
   unsigned i = 0, j = 0;
   LLVM_DEBUG(dbgs() << "Dependence Pair:\n");
+  /*
   for (i = 0; i < References.size(); i++) {
     for (j = 0; j < References.size(); j++) {
       RefTNode *A = References[i], *B = References[j];
@@ -47,6 +46,7 @@ void ReferenceAnalysis::ReferenceDependenceAnalysis(LoopTNode *LN)
       }
     }
   }
+   */
 
   unsigned ParallelLoopLevel = LN->getLoopLevel();
   LLVM_DEBUG(dbgs() << "Level " << ParallelLoopLevel << "\n");
@@ -57,61 +57,22 @@ void ReferenceAnalysis::ReferenceDependenceAnalysis(LoopTNode *LN)
       std::vector<char> Dep;
       if (QueryEngine->areAccessToSameArray(A, B)) {
         LLVM_DEBUG(
-            dbgs() << "Dep[";
-            dbgs() << A->getRefExprString() << "][" << B->getRefExprString() << "] = ";
-            );
+            dbgs() << "(" << A->getRefExprString() << ", " << SPSNodeNameTable[A]
+                << ") and (" << B->getRefExprString() << ", " << SPSNodeNameTable[B]
+                << ") = ");
         // do dependence testing when A and B are the reference to the same
         // array. D is null means A and B has no dependence
         if (auto D = DI->depends(A->getMemOp(), B->getMemOp(), true)) {
-          unsigned Levels = D->getLevels();
-          char Direction;
-          for (unsigned II = 1; II <= Levels; ++II) {
-            if (II != ParallelLoopLevel+1)
-              continue;
-            const SCEV *Distance = D->getDistance(II);
-            LLVM_DEBUG(
-                if (Distance)
-                    dbgs() << "Distance at level " << II << " is " << *Distance << "\n");
-            const SCEVConstant *SCEVConst =
-                dyn_cast_or_null<SCEVConstant>(Distance);
-            if (SCEVConst) {
-              const ConstantInt *CI = SCEVConst->getValue();
-              if (CI->isNegative())
-                Direction = '<';
-              else if (CI->isZero())
-                Direction = '=';
-              else
-                Direction = '>';
-              Dep.push_back(Direction);
-            } else if (D->isScalar(II)) {
-              Direction = 'S';
-              Dep.push_back(Direction);
-            } else {
-              unsigned Dir = D->getDirection(II);
-              if (Dir == Dependence::DVEntry::LT ||
-                  Dir == Dependence::DVEntry::LE)
-                Direction = '<';
-              else if (Dir == Dependence::DVEntry::GT ||
-                       Dir == Dependence::DVEntry::GE)
-                Direction = '>';
-              else if (Dir == Dependence::DVEntry::EQ)
-                Direction = '=';
-              else
-                Direction = '*';
-              Dep.push_back(Direction);
-            }
+          if (D->isLoopIndependent()) {
+            LLVM_DEBUG(dbgs() <<  " Loop Independent, O(1)" << "\n";);
+          } else {
+//            if (D=?) {
+//              LLVM_DEBUG(dbgs() << " Loop Carried at level " << level
+//                                << ", O(N^" << ")\n";);
+//            }
           }
-          LLVM_DEBUG(
-              dbgs() << "(";
-              for (unsigned i = 0; i < Dep.size(); i++) {
-                  dbgs() << Dep[i];
-                  if (i != Dep.size()-1)
-                    dbgs() << ", ";
-              }
-              dbgs() << ")\n";
-              );
         } else {
-          LLVM_DEBUG(dbgs() << "(-)\n" );
+          LLVM_DEBUG(dbgs() << "No Dependence\n" );
         }
       }
     }
@@ -156,6 +117,9 @@ bool ReferenceAnalysis::runOnFunction(Function &F) {
       .InductionVarNameTable);
   QueryEngine = &getAnalysis<TreeAnalysis::PlussAbstractionTreeAnalysis>()
       .getQueryEngine();
+
+  SPSNodeNameTable = getAnalysis<TreeAnalysis::PlussAbstractionTreeAnalysis>()
+      .NodeToRefNameMapping;
 
   auto topiter = TreeRoot->neighbors.begin();
   for (; topiter != TreeRoot->neighbors.end(); ++topiter) {

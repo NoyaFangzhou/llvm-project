@@ -508,7 +508,7 @@ void CodeGenFunction::EmitBlock(llvm::BasicBlock *BB, bool IsFinished) {
   Builder.SetInsertPoint(BB);
 }
 
-/// ADDED NEW QUALITY PRAGMA
+/// ADDED NEW PLUSS PRAGMA
 void CodeGenFunction::addPlussHintMetadata(llvm::BasicBlock *Block,
                                            ArrayRef<const Attr *> PlussAttrs) {
   using namespace llvm;

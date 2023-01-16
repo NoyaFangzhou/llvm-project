@@ -13,7 +13,6 @@
 #include "llvm/Transforms/Scalar/SimplifyCFG.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/ADT/Statistic.h"
-#include "BranchAnalysis.h"
 #include "InductionVarAnalysis.h"
 #define DEBUG_TYPE 	"branch-analysis"
 
