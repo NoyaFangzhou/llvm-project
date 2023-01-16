@@ -7,6 +7,7 @@
 
 #include "llvm/Pass.h"
 #include "llvm/IR/Function.h"
+#include "llvm/Analysis/DependenceAnalysis.h"
 #include "PlussUtils.h"
 #include "BranchAnalysis.h"
 #include "LoopAnalysisUtils.h"
@@ -33,6 +34,8 @@ private:
 
   ScalarEvolutionWrapperPass *SEWP;
   BranchAnalysis::BranchAnalysisWrapperPass *BAWP;
+
+  DependenceInfo *DI;
 
   SPSTNode *TreeRoot;
 

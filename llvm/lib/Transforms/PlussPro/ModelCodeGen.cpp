@@ -788,6 +788,12 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitCode("void no_share_distribute(unordered_map<uint64_t, double>& intra_thread_histogram, int thread_cnt=THREAD_NUM)");
     CodeGen->EmitCode("{");
     CodeGen->tab_count++;
+    // For TTC use start
+    CodeGen->EmitCode("for (auto noshare_entry : intra_thread_histogram) ");
+    CodeGen->tab_count++;
+    CodeGen->EmitFunctionCall("pluss_parallel_histogram_update", {"merged_no_share_RI", "noshare_entry.first", "noshare_entry.second"});
+    CodeGen->tab_count--;
+    // For TTC use end
     CodeGen->EmitStmt("unordered_map<uint64_t, double> dist");
     CodeGen->EmitCode("for (auto entry : intra_thread_histogram) {");
     CodeGen->tab_count++;
@@ -814,6 +820,17 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitCode("void share_distribute(unordered_map<int, unordered_map<uint64_t, double>>&inter_thread_histogram, int thread_cnt=THREAD_NUM)");
     CodeGen->EmitCode("{");
     CodeGen->tab_count++;
+    // For TTC use begin
+    CodeGen->EmitCode("for (auto share_entry : inter_thread_histogram) {");
+    CodeGen->tab_count++;
+    CodeGen->EmitCode("for (auto share_histogram_entry : share_entry.second) {");
+    CodeGen->tab_count++;
+    CodeGen->EmitFunctionCall("pluss_parallel_histogram_update", {"merged_share_RI", "share_histogram_entry.first", "share_histogram_entry.second"});
+    CodeGen->tab_count--;
+    CodeGen->EmitCode("}");
+    CodeGen->tab_count--;
+    CodeGen->EmitCode("}");
+    // For TTC use end
     CodeGen->EmitStmt("unordered_map<int, double> prob");
     CodeGen->EmitStmt("unordered_map<uint64_t, double> dist");
     CodeGen->EmitCode("for (auto share_entry : inter_thread_histogram) {");
@@ -1681,18 +1698,17 @@ void ModelCodeGenWrapperPass::HeaderGen()
   if ((EnableSampling && SamplingMethod == RANDOM_START) || EnablePerReference) {
     CodeGen->EmitStmt(
         "unordered_map<string, uint64_t> iteration_traversed_map");
-    if (InterleavingTechnique == 1) {
-      CodeGen->EmitStmt(
-          "unordered_map<uint64_t, double> no_share_intra_thread_RI");
-      CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, double>> share_intra_thread_RI");
-    }
   } else {
     CodeGen->EmitStmt("uint64_t max_iteration_count = 0");
-    if (InterleavingTechnique == 1) {
+  }
+  if (InterleavingTechnique == 1) {
 //      CodeGen->EmitStmt("double model_time = 0.0");
-      CodeGen->EmitStmt("unordered_map<uint64_t, double> no_share_intra_thread_RI");
-      CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, double>> share_intra_thread_RI");
-    }
+    CodeGen->EmitStmt("unordered_map<uint64_t, double> no_share_intra_thread_RI");
+    CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, double>> share_intra_thread_RI");
+    // for TTC use start
+    CodeGen->EmitStmt("unordered_map<uint64_t, double> merged_no_share_RI");
+    CodeGen->EmitStmt("unordered_map<uint64_t, double> merged_share_RI");
+    // for TTC use end
   }
 }
 
@@ -1848,8 +1864,14 @@ void ModelCodeGenWrapperPass::MainFuncGen()
   CodeGen->EmitFunctionCall("pluss_timer_stop", {});
   CodeGen->EmitFunctionCall("pluss_timer_print", {});
 //  CodeGen->EmitStmt("cout << model_time << endl");
-  CodeGen->EmitFunctionCall("pluss_print_histogram", {});
-  CodeGen->EmitFunctionCall("pluss_print_mrc", {});
+//  CodeGen->EmitFunctionCall("pluss_print_histogram", {});
+//  CodeGen->EmitFunctionCall("pluss_print_mrc", {});
+  // For TTC use start
+  CodeGen->EmitStmt("cout << \"No share reuses\" << endl");
+  CodeGen->EmitFunctionCall("pluss_parallel_print_histogram", {"merged_no_share_RI"});
+  CodeGen->EmitStmt("cout << \"Share reuses\" << endl");
+  CodeGen->EmitFunctionCall("pluss_parallel_print_histogram", {"merged_share_RI"});
+  // For TTC use end
   if ((EnableSampling && (SamplingMethod == RANDOM_START)) || EnablePerReference) {
     CodeGen->EmitCode("for (auto entry: iteration_traversed_map) {");
     CodeGen->tab_count++;
