@@ -59,6 +59,8 @@ BasicBlock *ImmediatePostDominator(PostDominatorTree &PDT, BasicBlock *Target);
 
 void FindAllPathesBetweenTwoBlock(BasicBlock *, BasicBlock *,
                                   SmallVectorImpl<Path> &);
+void FindAllBasicBocksBetweenTwoBlock(BasicBlock *, BasicBlock *,
+                                      SmallVectorImpl<BasicBlock *> &);
 
 
 PHINode *getInductionVariable(Loop *L, ScalarEvolution &SE);
@@ -69,6 +71,7 @@ bool FindValueInSCEV(const SCEV *, Value *, ScalarEvolution &);
 int ReplaceValueWithConstant(Value *, unordered_map<Value *, int> &, TranslateStatus &);
 
 void ReplaceSubstringWith(string &, string, string);
+void SwitchToDOTRepresentation(string &base);
 bool isConstantString(string);
 
 #endif // LLVM_PLUSSUTILS_H

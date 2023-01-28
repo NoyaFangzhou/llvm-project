@@ -661,6 +661,7 @@ bool ModelCodeGenProWrapperPass::canBeSimplifiedByFormula(SPSTNode *Node)
 
 void ModelCodeGenProWrapperPass::ModelUtilGen()
 {
+#if 0
   CodeGen->EmitCode("void simulate_negative_binomial(int thread_cnt, uint64_t n, unordered_map<uint64_t, double> &dist)");
   CodeGen->EmitCode("{");
   CodeGen->tab_count++;
@@ -690,7 +691,7 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
   CodeGen->EmitCode("}");
   CodeGen->tab_count--;
   CodeGen->EmitCode("} // end of void simulate_negative_binomial()");
-#if 0
+
   CodeGen->EmitCode("void negative_binomial_approximation(double p, uint64_t n, unordered_map<uint64_t, double> &dist)");
   CodeGen->EmitCode("{");
   CodeGen->tab_count++;
@@ -753,14 +754,14 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
 #endif
   if (EnableParallelOpt) {
     CodeGen->EmitCode(
-        "void no_share_distribute(unordered_map<uint64_t, double>& histogram_to_distribute, unordered_map<uint64_t, double>& target_histogram, int thread_cnt=THREAD_NUM)");
+        "void no_share_distribute(unordered_map<long, double>& histogram_to_distribute, unordered_map<long, double>& target_histogram, int thread_cnt=THREAD_NUM)");
   } else {
     CodeGen->EmitCode(
-        "void no_share_distribute(unordered_map<uint64_t, double>& histogram_to_distribute, int thread_cnt=THREAD_NUM)");
+        "void no_share_distribute(unordered_map<long, double>& histogram_to_distribute, int thread_cnt=THREAD_NUM)");
   }
   CodeGen->EmitCode("{");
   CodeGen->tab_count++;
-  CodeGen->EmitStmt("unordered_map<uint64_t, double> dist");
+  CodeGen->EmitStmt("unordered_map<long, double> dist");
   CodeGen->EmitCode("for (auto entry : histogram_to_distribute) {");
   CodeGen->tab_count++;
   CodeGen->EmitCode("if (thread_cnt > 1) {");
@@ -768,7 +769,7 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
   CodeGen->EmitStmt("simulate_negative_binomial(thread_cnt, entry.first, dist)");
   CodeGen->EmitCode("for (auto dist_entry : dist) {");
   CodeGen->tab_count++;
-  CodeGen->EmitStmt("uint64_t ri_to_distribute = dist_entry.first");
+  CodeGen->EmitStmt("long ri_to_distribute = dist_entry.first");
   if (EnableParallelOpt) {
     CodeGen->EmitStmt("pluss_parallel_histogram_update(target_histogram, ri_to_distribute, entry.second * dist_entry.second)");
   } else {
@@ -796,14 +797,14 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
   CodeGen->tab_count--;
   CodeGen->EmitCode("} // end of void no_share_distribute()");
   if (EnableParallelOpt) {
-    CodeGen->EmitCode("void share_distribute(unordered_map<int, unordered_map<uint64_t, double>>&histogram_to_distribute, unordered_map<uint64_t, double> &target_histogram, int thread_cnt=THREAD_NUM)");
+    CodeGen->EmitCode("void share_distribute(unordered_map<int, unordered_map<long, double>>&histogram_to_distribute, unordered_map<long, double> &target_histogram, int thread_cnt=THREAD_NUM)");
   } else {
-    CodeGen->EmitCode("void share_distribute(unordered_map<int, unordered_map<uint64_t, double>>&histogram_to_distribute, int thread_cnt=THREAD_NUM)");
+    CodeGen->EmitCode("void share_distribute(unordered_map<int, unordered_map<long, double>>&histogram_to_distribute, int thread_cnt=THREAD_NUM)");
   }
   CodeGen->EmitCode("{");
   CodeGen->tab_count++;
   CodeGen->EmitStmt("unordered_map<int, double> prob");
-  CodeGen->EmitStmt("unordered_map<uint64_t, double> dist");
+  CodeGen->EmitStmt("unordered_map<long, double> dist");
   CodeGen->EmitCode("for (auto share_entry : histogram_to_distribute) {");
   CodeGen->tab_count++;
   CodeGen->EmitStmt("int i = 1");
@@ -826,7 +827,7 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
   CodeGen->EmitStmt("simulate_negative_binomial(1.0/THREAD_NUM, reuse_entry.first, dist)");
   CodeGen->EmitCode("for (auto dist_entry: dist) {");
   CodeGen->tab_count++;
-  CodeGen->EmitStmt("uint64_t ri_to_distribute = dist_entry.first");
+  CodeGen->EmitStmt("long ri_to_distribute = dist_entry.first");
 #if 0
   CodeGen->EmitCode("if (entry.first <= 500) {");
   CodeGen->tab_count++;
@@ -857,7 +858,7 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
   CodeGen->EmitCode("}");
   CodeGen->EmitCode("for (auto bin : prob) {");
   CodeGen->tab_count++;
-  CodeGen->EmitStmt("uint64_t new_ri = (uint64_t)pow(2.0, bin.first-1)");
+  CodeGen->EmitStmt("long new_ri = (long)pow(2.0, bin.first-1)");
   if (EnableParallelOpt) {
     CodeGen->EmitStmt("pluss_parallel_histogram_update(target_histogram,new_ri,bin.second*cnt_to_distribute)");
   } else {
@@ -915,15 +916,15 @@ void ModelCodeGenProWrapperPass::HeaderGen()
   CodeGen->EmitStmt("using namespace std");
   if ((EnableSampling && SamplingMethod == RANDOM_START) || EnablePerReference) {
     CodeGen->EmitStmt(
-        "unordered_map<string, uint64_t> iteration_traversed_map");
+        "unordered_map<string, long> iteration_traversed_map");
     if (!EnableParallelOpt) {
       CodeGen->EmitStmt(
-          "unordered_map<uint64_t, double> no_share_intra_thread_RI");
+          "unordered_map<long, double> no_share_intra_thread_RI");
       CodeGen->EmitStmt(
-          "unordered_map<int, unordered_map<uint64_t, double>> share_intra_thread_RI");
+          "unordered_map<int, unordered_map<long, double>> share_intra_thread_RI");
     }
   } else {
-    CodeGen->EmitStmt("uint64_t max_iteration_count = 0");
+    CodeGen->EmitStmt("long max_iteration_count = 0");
   }
 }
 
@@ -989,11 +990,11 @@ void ModelCodeGenProWrapperPass::MainFuncGen()
 #endif
   // random_start sampling must do per-ref analysis
   if ((EnableSampling && (SamplingMethod == RANDOM_START)) || EnablePerReference) {
-    CodeGen->EmitStmt("uint64_t max_iteration_count = 0");
+    CodeGen->EmitStmt("long max_iteration_count = 0");
     if (EnableParallelOpt) {
       for (auto node : SPSNodeNameTable) {
         if (RefTNode *ref = dynamic_cast<RefTNode *>(node.first)) {
-          CodeGen->EmitStmt("unordered_map<uint64_t, double> histogram_" + node.second);
+          CodeGen->EmitStmt("unordered_map<long, double> histogram_" + node.second);
         }
       }
     }
@@ -1145,7 +1146,7 @@ void ModelCodeGenProWrapperPass::SamplerBodyGen(bool isPerReference)
 #endif
       CodeGen->EmitComment(TargetRef->getRefExprString());
       if (EnableParallelOpt)
-        CodeGen->EmitCode("void sampler_" + ref.second + "(unordered_map<uint64_t, double> &histogram) {");
+        CodeGen->EmitCode("void sampler_" + ref.second + "(unordered_map<long, double> &histogram) {");
       else
         CodeGen->EmitCode("void sampler_" + ref.second + "() {");
       CodeGen->tab_count++;
@@ -1159,13 +1160,13 @@ void ModelCodeGenProWrapperPass::SamplerBodyGen(bool isPerReference)
       CodeGen->EmitStmt("int tid_to_run = 0, start_tid = 0, working_threads = THREAD_NUM");
       CodeGen->EmitStmt("uint64_t addr = 0");
       CodeGen->EmitComment("global counter");
-      CodeGen->EmitStmt("array<uint64_t, THREAD_NUM> count = {0}");
-      CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, uint64_t>> LAT");
-      CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, Iteration *>> LATSampleIterMap");
+      CodeGen->EmitStmt("array<long, THREAD_NUM> count = {0}");
+      CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, long>> LAT");
+      CodeGen->EmitStmt("unordered_map<int, unordered_map<long, Iteration *>> LATSampleIterMap");
       if (EnableParallelOpt) {
         CodeGen->EmitStmt(
-            "unordered_map<uint64_t, double> no_share_histogram");
-        CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, double>> share_histogram");
+            "unordered_map<long, double> no_share_histogram");
+        CodeGen->EmitStmt("unordered_map<int, unordered_map<long, double>> share_histogram");
       }
 //        LLVM_DEBUG(
 //            for (auto l: path) {
@@ -1519,7 +1520,16 @@ void ModelCodeGenProWrapperPass::SamplerBodyGen(bool isPerReference)
               CodeGen->EmitStmt("samples.pop()");
               CodeGen->EmitStmt("if (!idle_threads.empty()) { idle_threads.clear(); }");
               CodeGen->EmitStmt("if (!worker_threads.empty()) { worker_threads.clear(); }");
-              CodeGen->EmitStmt("if (!LAT.empty()) { LAT.clear(); }");
+              CodeGen->EmitStmt("if (!LAT.empty()) { ");
+              CodeGen->tab_count++;
+              CodeGen->EmitCode("for (unsigned i = 0; i < LAT.size(); i++) {");
+              CodeGen->tab_count++;
+              CodeGen->EmitFunctionCall("pluss_histogram_update", {"-1", "LAT[i].size()"});
+              CodeGen->EmitStmt("LAT.clear();");
+              CodeGen->tab_count--;
+              CodeGen->EmitCode("}");
+              CodeGen->tab_count--;
+              CodeGen->EmitCode("}");
               CodeGen->EmitCode("if (!LATSampleIterMap.empty()) {");
               CodeGen->tab_count++;
               CodeGen->EmitCode(
@@ -1589,7 +1599,16 @@ void ModelCodeGenProWrapperPass::SamplerBodyGen(bool isPerReference)
         CodeGen->EmitLabel("END_SAMPLE");
         CodeGen->EmitStmt("if (!idle_threads.empty()) { idle_threads.clear(); }");
         CodeGen->EmitStmt("if (!worker_threads.empty()) { worker_threads.clear(); }");
-        CodeGen->EmitStmt("if (!LAT.empty()) { LAT.clear(); }");
+        CodeGen->EmitStmt("if (!LAT.empty()) { ");
+        CodeGen->tab_count++;
+        CodeGen->EmitCode("for (unsigned i = 0; i < LAT.size(); i++) {");
+        CodeGen->tab_count++;
+        CodeGen->EmitFunctionCall("pluss_histogram_update", {"-1", "LAT[i].size()"});
+        CodeGen->EmitStmt("LAT.clear();");
+        CodeGen->tab_count--;
+        CodeGen->EmitCode("}");
+        CodeGen->tab_count--;
+        CodeGen->EmitCode("}");
         CodeGen->EmitCode("for (unsigned i = 0; i < progress.size(); i++) {");
         CodeGen->tab_count++;
         CodeGen->EmitCode("if (progress[i]) {");
@@ -1777,11 +1796,11 @@ void ModelCodeGenProWrapperPass::SamplerBodyGenImpl(SPSTNode *Root)
       }
       CodeGen->tab_count++;
       if (InterleavingTechnique == 0) {
-        CodeGen->EmitStmt("uint64_t reuse = count - LAT_" +
+        CodeGen->EmitStmt("long reuse = count - LAT_" +
                           RefNode->getArrayNameString() +
                           "[addr]");
       } else {
-        CodeGen->EmitStmt("uint64_t reuse = count[THREAD_NUM+1] - LAT_" +
+        CodeGen->EmitStmt("long reuse = count[THREAD_NUM+1] - LAT_" +
                           RefNode->getArrayNameString() +
                           "[THREAD_NUM+1][addr]");
       }
@@ -2090,9 +2109,9 @@ void ModelCodeGenProWrapperPass::PerRefSamplerBodyGenImpl(SPSTNode *Root,
         CodeGen->EmitCode("if (start_reuse_search) {");
         CodeGen->tab_count++;
         if (InterleavingTechnique == 0)
-          CodeGen->EmitStmt("count += (uint64_t)" + loop_acc_count_expr);
+          CodeGen->EmitStmt("count += (long)" + loop_acc_count_expr);
         else
-          CodeGen->EmitStmt("count[tid_to_run] += (uint64_t)(" + loop_acc_count_expr + "/ THREAD_NUM)");
+          CodeGen->EmitStmt("count[tid_to_run] += (long)(" + loop_acc_count_expr + "/ THREAD_NUM)");
         CodeGen->tab_count--;
         CodeGen->EmitCode("} // end of start_reuse_search");
       }
@@ -2138,7 +2157,7 @@ void ModelCodeGenProWrapperPass::PerRefSamplerBodyGenImpl(SPSTNode *Root,
 #endif
         CodeGen->EmitCode("if (start_reuse_search) {");
         CodeGen->tab_count++;
-        CodeGen->EmitStmt("count += (uint64_t)" + true_branch_acc_count_expr);
+        CodeGen->EmitStmt("count += (long)" + true_branch_acc_count_expr);
 //        if (EnableParallelOpt) {
 //          CodeGen->EmitStmt("m.lock()");
 //          CodeGen->EmitFunctionCall("pluss_per_thread_bypass",
@@ -2175,7 +2194,7 @@ void ModelCodeGenProWrapperPass::PerRefSamplerBodyGenImpl(SPSTNode *Root,
 #endif
         CodeGen->EmitCode("if (start_reuse_search) {");
         CodeGen->tab_count++;
-        CodeGen->EmitStmt("count += (uint64_t)" + false_branch_acc_count_expr);
+        CodeGen->EmitStmt("count += (long)" + false_branch_acc_count_expr);
 
         CodeGen->tab_count--;
         CodeGen->EmitCode("} // end of start_reuse_search");
@@ -2269,7 +2288,7 @@ void ModelCodeGenProWrapperPass::PerRefSamplerBodyGenImpl(SPSTNode *Root,
         }
         CodeGen->EmitCode("if (LAT[tid_to_run].find(addr) != LAT[tid_to_run].end()) {");
         CodeGen->tab_count++;
-        CodeGen->EmitStmt("uint64_t reuse = count[tid_to_run] - LAT[tid_to_run][addr]");
+        CodeGen->EmitStmt("long reuse = count[tid_to_run] - LAT[tid_to_run][addr]");
         CodeGen->EmitStmt("Iteration *src = LATSampleIterMap[tid_to_run][LAT[tid_to_run][addr]]");
         // compute the expression of one iteration of parallel loop
         // replace all induction variable names inside the expression with
@@ -3144,7 +3163,7 @@ void ModelCodeGenProWrapperPass::PerRefParallelSamplerBodyGenImpl(SPSTNode *Root
 
           CodeGen->EmitCode("if (LAT[tid_to_run].find(addr) != LAT[tid_to_run].end()) {");
           CodeGen->tab_count++;
-          CodeGen->EmitStmt("uint64_t reuse = count[tid_to_run] - LAT[tid_to_run][addr]");
+          CodeGen->EmitStmt("long reuse = count[tid_to_run] - LAT[tid_to_run][addr]");
 
           // Iteration *src and *access forms a reuse
           // Find RefTNode of src and sink (TargetRef and RefNode)
@@ -4932,7 +4951,7 @@ void ModelCodeGenProWrapperPass::PerRefParallelSamplerBranchBodyGenImpl(DummyTNo
           }
           CodeGen->EmitCode("if (LAT.find(addr) != LAT.end()) {");
           CodeGen->tab_count++;
-          CodeGen->EmitStmt("uint64_t reuse = count - LAT[addr]");
+          CodeGen->EmitStmt("long reuse = count - LAT[addr]");
           if (EnableParallelOpt) {
             CodeGen->EmitFunctionCall("pluss_parallel_histogram_update", {"histogram", "reuse", "1"});
           } else {

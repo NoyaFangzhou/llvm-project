@@ -40,8 +40,8 @@ struct LoopAnalysisWrapperPass : public FunctionPass {
   // By copy-past the code in the output file, one can view the abstraction
   // tree on the online graphiz website.
   // i.e. https://dreampuf.github.io/GraphvizOnline
-  void ViewLoopTree(SPSTNode *Root, string title);
-  void ViewIndudctionVarDependency();
+  void ViewLoopTree(raw_fd_ostream &, SPSTNode *Root, string title);
+  void ViewIndudctionVarDependency(raw_fd_ostream &);
   /* Analysis pass main function */
   bool runOnFunction(Function &F) override;
   void getAnalysisUsage(AnalysisUsage &AU) const override;
@@ -56,8 +56,15 @@ private:
   BranchAnalysis::BranchAnalysisWrapperPass *BAWP;
   void AddRefNodeToList(BasicBlock *Block, vector<SPSTNode *> &SPSNodeList);
   SPSTNode *BuildTreeForLoopImpl(Loop *,
+                                 SPSTNode *,
                                  unordered_set<BasicBlock *> &,
                                  unsigned LoopLevel = 0);
+//  SPSTNode *BuildTreeForLoopImpl(Loop *,
+//                                 unordered_set<BasicBlock *> &,
+//                                 unsigned LoopLevel = 0);
+  SPSTNode *BuildTreeFromCFG(Path, Loop*, SPSTNode *,
+                             unordered_set<BasicBlock *> &,
+                                 unsigned);
   SPSTNode *BuildBranchNodeFor(BranchInst *);
   void AppendBranchNodesOnTreeImpl(SPSTNode *);
   void AppendRefNodesOnTreeImpl(SPSTNode *);

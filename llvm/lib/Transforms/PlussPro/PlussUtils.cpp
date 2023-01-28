@@ -107,6 +107,11 @@ string StringTranslator::ValueToStringExpr(Value *V, TranslateStatus &status)
   }
   case Instruction::LShr: {
     expr = "(" + ValueToStringExpr(I->getOperand(0), status)
+           + " >> " + ValueToStringExpr(I->getOperand(1), status) + ")";
+    break;
+  }
+  case Instruction::Shl: {
+    expr = "(" + ValueToStringExpr(I->getOperand(0), status)
            + " << " + ValueToStringExpr(I->getOperand(1), status) + ")";
     break;
   }
@@ -125,6 +130,8 @@ string StringTranslator::ValueToStringExpr(Value *V, TranslateStatus &status)
            + " | " + ValueToStringExpr(I->getOperand(1), status) + ")";
     break;
   }
+  case Instruction::FPToSI:
+  case Instruction::FPToUI:
   case Instruction::Trunc:
   case Instruction::FPExt:
   case Instruction::SExt:
@@ -165,18 +172,31 @@ string StringTranslator::ValueToStringExpr(Value *V, TranslateStatus &status)
   }
   case Instruction::Call: {
     CallInst *FuncCall = dyn_cast<CallInst>(I);
+    expr = FuncCall->getCalledFunction()->getName().str() + "(";
     LLVM_DEBUG(
-        dbgs() << *FuncCall << " has " << FuncCall->getNumArgOperands() << " arguments\n";
-//          for (unsigned i = 0; i < FuncCall->getNumArgOperands(); i++) {
-//            string arg = ValueToStringExpr(FuncCall->getArgOperand(i), status);
-//            if (status == SUCCESS) {
-//              dbgs() << "args[" << i << "] = " << arg;
-//              if (i < FuncCall->getNumArgOperands() - 1)
-//                dbgs() << ", ";
-//            }
-//          }
+        dbgs() << *FuncCall <<  " has " << FuncCall->getNumArgOperands() << " arguments\n";
+          dbgs() << FuncCall->getCalledFunction()->getName().str() << "(";
+          for (unsigned i = 0; i < FuncCall->getNumArgOperands(); i++) {
+            string arg = ValueToStringExpr(FuncCall->getArgOperand(i), status);
+            if (status == SUCCESS) {
+              dbgs() << arg;
+            } else {
+              dbgs() << "Argument " << *(FuncCall->getArgOperand(i)) << " is not translatable";
+            }
+            if (i < FuncCall->getNumArgOperands() - 1)
+              dbgs() << ", ";
+          }
+          dbgs() << ")\n";
     );
-
+    for (unsigned i = 0; i < FuncCall->getNumArgOperands(); i++) {
+      string arg = ValueToStringExpr(FuncCall->getArgOperand(i), status);
+      if (status == SUCCESS) {
+        expr += arg;
+        if (i < FuncCall->getNumArgOperands() - 1)
+          expr += ",";
+      }
+    }
+    expr += ")";
     break;
   }
   default:
@@ -195,8 +215,6 @@ string StringTranslator::ConditionToStringExpr(CmpInst *CI,
   if (status != SUCCESS)
     return Expr;
   string sign = PredicateToStringExpr(CI->getPredicate(), status);
-  if (isDotFormat)
-    sign = "\\" + sign;
   if (status != SUCCESS)
     return Expr;
   Expr += (" " + sign + " ");
@@ -447,7 +465,7 @@ BasicBlock *ImmediatePostDominator(PostDominatorTree &PDT, BasicBlock *Target)
 }
 
 
-/// do Depth First Traversal of given directed graph.
+/// do Breath First Traversal of given directed graph.
 /// Start the traversal from source. Keep storing the visited vertices
 /// in an unordere_set say ‘visit[]’. If we reach the destination vertex,
 /// print contents of visit[]. The important thing is to mark current vertices
@@ -456,32 +474,27 @@ void FindAllPathesBetweenTwoBlock(BasicBlock *Src, BasicBlock *Sink,
                                   SmallVectorImpl<Path> &Pathes)
 {
   Path path;
-  queue<Path > q;
+  queue<Path> q;
   path.push_back(Src);
   q.push(path);
 
   while (!q.empty()) {
-    Path temp = q.front();
+    path = q.front();
     q.pop();
-    BasicBlock *Back = temp.back();
-    if (Back == Sink) {
+    BasicBlock *Last = path.back();
+    if (Last == Sink) {
       LLVM_DEBUG(
-      for (auto b : temp) {
+      for (auto b : path) {
         dbgs() << b->getName() << " -> ";
       }
           dbgs() << "\n";
       );
-      Pathes.push_back(temp);
+      Pathes.push_back(path);
     }
-    auto SuccIter = succ_begin(Back);
-    while (SuccIter != succ_end(Back)) {
-//      LLVM_DEBUG(
-//          dbgs() << (*SuccIter)->getName() << " is a successor of "
-//                        << Src->getName() << " \n";
-//          if (find(temp.begin(), temp.end(), *SuccIter) != temp.end())
-//              dbgs() << (*SuccIter)->getName() << " has been touched\n";);
-      if (find(temp.begin(), temp.end(), *SuccIter) == temp.end()) {
-        Path newpath(temp);
+    auto SuccIter = succ_begin(Last);
+    while (SuccIter != succ_end(Last)) {
+      if (find(path.begin(), path.end(), *SuccIter) == path.end()) {
+        Path newpath(path);
         newpath.push_back(*SuccIter);
         q.push(newpath);
       }
@@ -489,6 +502,32 @@ void FindAllPathesBetweenTwoBlock(BasicBlock *Src, BasicBlock *Sink,
     }
   }
 }
+
+void FindAllBasicBocksBetweenTwoBlock(BasicBlock *Src, BasicBlock *Sink,
+                                  SmallVectorImpl<BasicBlock *> &Blocks)
+{
+  SmallVector<Path, 4> Pathes;
+  unordered_set<BasicBlock *> visited;
+  FindAllPathesBetweenTwoBlock(Src, Sink, Pathes);
+  for (auto path : Pathes) {
+    for (auto block : path) {
+      if (visited.find(block) != visited.end())
+        continue;
+      visited.insert(block);
+      if (block != Sink)
+        Blocks.emplace_back(block);
+    }
+  }
+  LLVM_DEBUG(
+      dbgs() << "Blocks from " << Src->getName() << " to " << Sink->getName() << ":\n";
+      for (auto b : Blocks) {
+        dbgs() << b->getName() << " -> ";
+      }
+      dbgs() << "\n";
+  );
+
+}
+
 
 /*
 // utility function for printing
@@ -901,6 +940,28 @@ void ReplaceSubstringWith(string &base, string del_str, string new_str)
 
     /* Advance index forward so the next iteration doesn't pick it up as well. */
     index += new_str.size();
+  }
+}
+
+void SwitchToDOTRepresentation(string &base)
+{
+  vector<string> DOT_unrecognizable_symbol {"<", ">", "|"};
+  size_t index = 0;
+  for (auto symbol : DOT_unrecognizable_symbol) {
+    index = 0;
+    string new_symbol = "\\"+symbol;
+    while (true) {
+      /* Locate the substring to replace. */
+      index = base.find(symbol, index);
+      if (index == std::string::npos)
+        break;
+      /* Make the replacement. */
+      base.replace(index, symbol.size(), new_symbol);
+
+      /* Advance index forward so the next iteration doesn't pick it up as well.
+       */
+      index += new_symbol.size();
+    }
   }
 }
 

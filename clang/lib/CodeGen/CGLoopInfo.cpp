@@ -421,6 +421,7 @@ MDNode *LoopInfo::createMetadata(
   assert(!!AccGroup == Attrs.IsParallel &&
          "There must be an access group iff the loop is parallel");
   if (Attrs.IsParallel) {
+    LLVMContext &Ctx = Header->getContext();
     LoopProperties.push_back(
         MDNode::get(Ctx, {MDString::get(Ctx, "llvm.loop.parallel_accesses")}));
   }
@@ -485,7 +486,6 @@ LoopInfo::LoopInfo(BasicBlock *Header, const LoopAttributes &Attrs,
   }
 
   if (!Attrs.IsParallel && !Attrs.IsPlussParallel && Attrs.VectorizeWidth == 0 &&
-      Attrs.VectorizeScalable == LoopAttributes::Unspecified &&
       Attrs.InterleaveCount == 0 && Attrs.UnrollCount == 0 &&
       Attrs.UnrollAndJamCount == 0 && !Attrs.PipelineDisabled &&
       Attrs.PipelineInitiationInterval == 0 &&
@@ -494,7 +494,7 @@ LoopInfo::LoopInfo(BasicBlock *Header, const LoopAttributes &Attrs,
       Attrs.UnrollEnable == LoopAttributes::Unspecified &&
       Attrs.UnrollAndJamEnable == LoopAttributes::Unspecified &&
       Attrs.DistributeEnable == LoopAttributes::Unspecified && !StartLoc &&
-      !EndLoc && Attrs.LoopBoundHint == 0 && !Attrs.MustProgress)
+      !EndLoc && Attrs.LoopBoundHint == 0)
     return;
 
   TempLoopID = MDNode::getTemporary(Header->getContext(), None);

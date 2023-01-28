@@ -206,6 +206,7 @@ void LoopAnalysisWrapperPass::AddRefNodeToList(BasicBlock *Block,
 
 // The idea is we first build trees for all loops, then decorate refnode and
 // branch node on this tree.
+#if 0
 SPSTNode *LoopAnalysisWrapperPass::BuildTreeForLoopImpl(Loop *L,
                                                         unordered_set<BasicBlock *> &Visited,
                                                         unsigned LoopLevel)
@@ -263,7 +264,7 @@ void LoopAnalysisWrapperPass::AppendBranchNodesOnTreeImpl(SPSTNode *NodeInTree)
             BI->getParent());
         if (!IPostDom) {
           LLVM_DEBUG(dbgs() << "No Immediate post dominator of this branch,"
-                               "we ignor it\n");
+                               "we ignore it\n");
           continue;
         }
         LLVM_DEBUG(dbgs() << "Branch merges at " << IPostDom->getName()
@@ -472,6 +473,187 @@ void LoopAnalysisWrapperPass::AppendRefNodesOnTreeImpl(SPSTNode *NodeInTree)
 //    AppendRefNodesOnTreeImpl(Branch->neighbors[1]);
 //  }
 }
+#endif
+
+
+SPSTNode *LoopAnalysisWrapperPass::BuildTreeForLoopImpl(Loop *L,
+                                                        SPSTNode *Parent,
+                                                        unordered_set<BasicBlock *> &Visited,
+                                                        unsigned LoopLevel)
+{
+  bool IsParallel = IsPlussParallelLoop(L);
+  LoopTNode *LoopNode = new LoopTNode(L, LoopLevel, LoopCnt, IsParallel,
+                                      this->SEWP->getSE());
+  LoopCnt ++;
+  LoopCount ++;
+  if (IsParallel) { PlussParallelLoopCount++; }
+  GenerateLoopExpr(LoopNode);
+  LoopToNodeMapping[L] = LoopNode;
+  LLVM_DEBUG(dbgs() << " -- Loop " << L->getHeader()->getName() << ", " << L->getLoopLatch()->getName() << " \n");
+  if (Parent)
+    Parent->addNeighbors(LoopNode);
+  // Traverse all BasicBlock inside the loop and append Ref/Branch Node
+  // If meet a BasicBlock belonging to one of its subloop, we first construct the
+  // Tree for the subloop first, then appending the subloop node to the current
+  // loop node
+  for (auto Block : L->getBlocks()) {
+    if (Visited.find(Block) != Visited.end()) {
+      continue;
+    }
+    if (Block == L->getHeader() ||
+       Block == L->getLoopLatch()) {
+      Visited.insert(Block);
+      continue;
+    }
+    if (Loop *SubLoop = FindSubloopContainsBlockInLoop(L, Block)) {
+      LLVM_DEBUG(dbgs() << "Create loop node start at :" << SubLoop->getHeader()->getName() << " \n");
+      BuildTreeForLoopImpl(SubLoop, LoopNode, Visited, LoopLevel + 1);
+    } else {
+      vector<SPSTNode *> RefNodesInBB;
+      AddRefNodeToList(Block, RefNodesInBB);
+      for (auto RefNode : RefNodesInBB) {
+        LoopNode->addNeighbors(RefNode);
+      }
+      // It's safe to put the branch after append all reference node to the
+      // loop since the basicblock has only one exit
+      BranchInst *BI = BAWP->getBranchAnalyzer().GetBranchInsideBlock(Block);
+      if (BI && BAWP->getBranchAnalyzer().IsPlussSupportBranch(
+                    BI->getCondition())) {
+
+        LLVM_DEBUG(dbgs() << __FUNCTION__  << " -- Branch " << *BI << "\n";
+                   dbgs() << __FUNCTION__
+                       << "-- True : " << BI->getSuccessor(0)->getName() << "\n";
+                   dbgs()  << __FUNCTION__  << "-- False : " << BI->getSuccessor(1)->getName()
+                          << "\n";);
+        Path BlocksInBranch;
+        // It is possible that the immediate post dominator of one branch
+        // could also have branches inside.
+        BasicBlock *IPostDom = ImmediatePostDominator(
+            getAnalysis<PostDominatorTreeWrapperPass>().getPostDomTree(),
+            BI->getParent());
+        if (!IPostDom) {
+          LLVM_DEBUG(dbgs() << "No Immediate post dominator of this branch,"
+                               "we ignore it\n");
+          continue;
+        }
+        LLVM_DEBUG(dbgs() << __FUNCTION__  << " Branch merges at " << IPostDom->getName()
+                          << "\n");
+        // we will traverse the blocks in CFG related to
+        // this branch and build a BranchTNode.
+        // During the traversal, blocks after the branch block will also be
+        // traversed. To avoid duplicate traversal, we mark those blocks visited
+        //
+        // One special case is that, the IPostDom of one branch can also have
+        // branch conditions inside.  In this case, it needs to be traversed
+        // here
+        BranchTNode *BranchNode = new BranchTNode(BI->getCondition());
+        GenerateBranchExpr(BranchNode);
+        BasicBlock *TrueBlock = BI->getSuccessor(0);
+        BasicBlock *FalseBlock = BI->getSuccessor(1);
+        // traverse these branches and move all those loopnode at the bottom
+        // of each branch.
+        // remove the ipostdom. If there is a branch inside, it will be attached
+        // to a wrong parent node. We leave the visit to ipostdom to the traverse
+        // of loops.
+        FindAllBasicBocksBetweenTwoBlock(TrueBlock, IPostDom, BlocksInBranch);
+        BuildTreeFromCFG(BlocksInBranch, L, BranchNode->neighbors[0], Visited, LoopLevel);
+        BlocksInBranch.clear();
+        FindAllBasicBocksBetweenTwoBlock(FalseBlock, IPostDom, BlocksInBranch);
+        BuildTreeFromCFG(BlocksInBranch, L, BranchNode->neighbors[1], Visited, LoopLevel);
+        BlocksInBranch.clear();
+        LoopNode->addNeighbors(BranchNode);
+      }
+    }
+    Visited.insert(Block);
+  }
+
+}
+
+SPSTNode *LoopAnalysisWrapperPass::BuildTreeFromCFG(Path CFG,
+                                                    Loop *ParentLoop,
+                                                    SPSTNode *Parent,
+                                                    unordered_set<BasicBlock *> &Visited,
+                                                    unsigned LoopLevel) {
+  LLVM_DEBUG(
+      dbgs() << "CFG contains :";
+    for (auto Block : CFG) {
+          dbgs() << Block->getName() << " -- ";
+    }
+      dbgs() << " \n";
+  );
+  for (auto Block : CFG) {
+    if (Visited.find(Block) != Visited.end())
+      continue;
+    if (Loop *SubL = FindSubloopContainsBlockInLoop(ParentLoop, Block)) {
+      LLVM_DEBUG(dbgs() << "Create loop node start at :" << SubL->getHeader()->getName() << " \n");
+      BuildTreeForLoopImpl(SubL, Parent, Visited, LoopLevel+1);
+    } else {
+      vector<SPSTNode *> RefNodesInBB;
+      AddRefNodeToList(Block, RefNodesInBB);
+      if (!RefNodesInBB.empty()) {
+        for (auto RefNode : RefNodesInBB) {
+          Parent->addNeighbors(RefNode);
+        }
+      }
+      // It's safe to put the branch after append all reference node to the
+      // loop since the basicblock has only one exit
+      BranchInst *BI = BAWP->getBranchAnalyzer().GetBranchInsideBlock(Block);
+      if (BI && BAWP->getBranchAnalyzer().IsPlussSupportBranch(
+          BI->getCondition())) {
+        LLVM_DEBUG(dbgs() << "-- Branch " << *BI << "\n";
+                       dbgs()
+                           << "-- True : " << BI->getSuccessor(0)->getName() << "\n";
+                       dbgs() << "-- False : " << BI->getSuccessor(1)->getName()
+                              << "\n";);
+        Path BlocksInBranch;
+        // It is possible that the immediate post dominator of one branch
+        // could also have branches inside.
+        BasicBlock *IPostDom = ImmediatePostDominator(
+            getAnalysis<PostDominatorTreeWrapperPass>().getPostDomTree(),
+            BI->getParent());
+        if (!IPostDom) {
+          LLVM_DEBUG(dbgs() << "No Immediate post dominator of this branch,"
+                               "we ignore it\n");
+          continue;
+        }
+        LLVM_DEBUG(dbgs() << "Branch merges at " << IPostDom->getName()
+                          << "\n");
+        // we will traverse the blocks in CFG related to
+        // this branch and build a BranchTNode.
+        // During the traversal, blocks after the branch block will also be
+        // traversed. To avoid duplicate traversal, we mark those blocks visited
+        //
+        // One special case is that, the IPostDom of one branch can also have
+        // branch conditions inside.  In this case, it needs to be traversed
+        // here
+        BranchTNode *BranchNode = new BranchTNode(BI->getCondition());
+        GenerateBranchExpr(BranchNode);
+        BasicBlock *TrueBlock = BI->getSuccessor(0);
+        BasicBlock *FalseBlock = BI->getSuccessor(1);
+        // traverse these branches and move all those loopnode at the bottom
+        // of each branch
+        FindAllBasicBocksBetweenTwoBlock(TrueBlock, IPostDom, BlocksInBranch);
+        BuildTreeFromCFG(BlocksInBranch, ParentLoop, BranchNode->neighbors[0], Visited, LoopLevel);
+        BlocksInBranch.clear();
+        FindAllBasicBocksBetweenTwoBlock(FalseBlock, IPostDom, BlocksInBranch);
+        BuildTreeFromCFG(BlocksInBranch, ParentLoop, BranchNode->neighbors[1], Visited, LoopLevel);
+        BlocksInBranch.clear();
+        Parent->addNeighbors(BranchNode);
+      }
+    }
+    Visited.insert(Block);
+  }
+}
+
+void LoopAnalysisWrapperPass::AppendBranchNodesOnTreeImpl(SPSTNode *NodeInTree)
+{
+
+}
+
+void LoopAnalysisWrapperPass::AppendRefNodesOnTreeImpl(SPSTNode *NodeInTree)
+{}
+
+
 
 /*
 // Create a Node for L,
@@ -714,7 +896,7 @@ void LoopAnalysisWrapperPass::GenerateLoopExpr(LoopTNode *Node)
     Node->setLoopBound(LB);
     expr += ",";
     expr += Translator->ValueToStringExpr(LB->InitValue, status);
-    expr += ",\\";
+    expr += ",";
     expr += Translator->PredicateToStringExpr(LB->Predicate, status);
     expr += ",";
     if (!LB->FinalValue) {
@@ -898,6 +1080,8 @@ DIRECTION LoopAnalysisWrapperPass::hasDependency(Loop *Parent, Loop *Child)
   assert(Parent && Child && "Both Parent and Child loop should exist");
   assert(Parent != Child && "Child and Parent should not be equal");
   bool NeedInversePredicate = false;
+  LLVM_DEBUG(dbgs() << "Check Dependency between Parent Loop " << Parent->getHeader()->getName()
+             << " and Child Loop " << Child->getHeader()->getName() << "\n");
   ICmpInst *ChildLoopBranch = BAWP->getBranchAnalyzer().GetLoopBranch(Child, NeedInversePredicate);
   PHINode *ChildInductionPhi = getInductionVariable(Child, SEWP->getSE());
   PHINode *ParentInductionPhi = getInductionVariable(Parent, SEWP->getSE());
@@ -979,7 +1163,7 @@ void LoopAnalysisWrapperPass::DumpTree()
 }
 
 
-void LoopAnalysisWrapperPass::ViewIndudctionVarDependency()
+void LoopAnalysisWrapperPass::ViewIndudctionVarDependency(raw_fd_ostream &OS)
 {
   string tab = "\t";
   string nodeclass = "IVDepNode", shape = "record", content = "", fillcolor="none";
@@ -1025,10 +1209,11 @@ void LoopAnalysisWrapperPass::ViewIndudctionVarDependency()
   }
   code += "}\n";
   LLVM_DEBUG(dbgs() << code << "\n");
+  OS << code << "\n";
 }
 
 
-void LoopAnalysisWrapperPass::ViewLoopTree(SPSTNode *Root, string title)
+void LoopAnalysisWrapperPass::ViewLoopTree(raw_fd_ostream &OS, SPSTNode *Root, string title)
 {
   string tab = "\t";
   string code = "digraph \"AbstractionTree for '" + title + "' function\" {\n";
@@ -1056,10 +1241,12 @@ void LoopAnalysisWrapperPass::ViewLoopTree(SPSTNode *Root, string title)
     } else if (BranchTNode *Node = dynamic_cast<BranchTNode*>(top)) {
       nodeclass = "BranchTNode";
       content = Node->getConditionExpr();
+      SwitchToDOTRepresentation(content);
       fillcolor = "aquamarine";
     } else if (LoopTNode *Node = dynamic_cast<LoopTNode*>(top)) {
       nodeclass = "LoopTNode";
       content = "["+to_string(Node->getLoopLevel())+"]: "+Node->getLoopStringExpr();
+      SwitchToDOTRepresentation(content);
       fillcolor = "lemonchiffon";
       if (Node->isParallelLoop())
         fillcolor = "plum";
@@ -1084,6 +1271,7 @@ void LoopAnalysisWrapperPass::ViewLoopTree(SPSTNode *Root, string title)
   }
   code += "}\n";
   LLVM_DEBUG(dbgs() << code << "\n");
+  OS << code << "\n";
 }
 
 bool LoopAnalysisWrapperPass::IsPlussParallelLoop(Loop *L)
@@ -1186,9 +1374,9 @@ bool LoopAnalysisWrapperPass::runOnFunction(Function &F)
       // Then we move to the next subloop.
       // subloops in L->getSubLoop() vector follows the topology order,  so the traversal always follows the program flow.
       Loop *TopL = *toploopIter;
-      BuildTreeForLoopImpl(TopL, VisitedBasicBlock, 0);
-      AppendRefNodesOnTreeImpl(LoopToNodeMapping[TopL]);
-      AppendBranchNodesOnTreeImpl(LoopToNodeMapping[TopL]);
+      BuildTreeForLoopImpl(TopL, nullptr, VisitedBasicBlock, 0);
+//      AppendRefNodesOnTreeImpl(LoopToNodeMapping[TopL]);
+//      AppendBranchNodesOnTreeImpl(LoopToNodeMapping[TopL]);
       DummyRoot->addNeighbors(LoopToNodeMapping[TopL]);
       while (TopL->contains(&*blockIter)) {
         blockIter++;
@@ -1218,11 +1406,49 @@ bool LoopAnalysisWrapperPass::runOnFunction(Function &F)
     FindAllInductionVarDependencyInLoop(TopLoop);
   }
   //  F.viewCFG();
-  if (ViewAbstractionTree)
-    ViewLoopTree(TreeRoot, F.getName().str());
+  if (ViewAbstractionTree) {
+    string AbstractTreeFilename = "."+F.getName().str()+".tree";
+    int FD;
+    std::error_code EC = sys::fs::openFileForWrite(
+        AbstractTreeFilename, FD, sys::fs::CD_CreateAlways, sys::fs::OF_Text);
 
-  if (ViewInductionVariableDependency)
-    ViewIndudctionVarDependency();
+    // Writing over an existing file is not considered an error.
+    if (EC == std::errc::file_exists) {
+      errs() << "file exists, overwriting" << "\n";
+    } else if (EC) {
+      errs() << "error writing into file" << "\n";
+    } else {
+      errs() << "writing to the newly created file " << AbstractTreeFilename << "\n";
+    }
+    raw_fd_ostream O(FD, /*shouldClose=*/ true);
+
+    if (FD == -1) {
+      errs() << "error opening file '" << AbstractTreeFilename << "' for writing!\n";
+    }
+    ViewLoopTree(O, TreeRoot, F.getName().str());
+  }
+
+  if (ViewInductionVariableDependency) {
+    string IVDependencyFilename = "."+F.getName().str()+".ivdep";
+    int FD;
+    std::error_code EC = sys::fs::openFileForWrite(
+        IVDependencyFilename, FD, sys::fs::CD_CreateAlways, sys::fs::OF_Text);
+
+    // Writing over an existing file is not considered an error.
+    if (EC == std::errc::file_exists) {
+      errs() << "file exists, overwriting" << "\n";
+    } else if (EC) {
+      errs() << "error writing into file" << "\n";
+    } else {
+      errs() << "writing to the newly created file " << IVDependencyFilename << "\n";
+    }
+    raw_fd_ostream O(FD, /*shouldClose=*/ true);
+
+    if (FD == -1) {
+      errs() << "error opening file '" << IVDependencyFilename << "' for writing!\n";
+    }
+    ViewIndudctionVarDependency(O);
+  }
   return false;
 }
 

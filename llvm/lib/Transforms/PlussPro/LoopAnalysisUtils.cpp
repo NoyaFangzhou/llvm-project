@@ -226,6 +226,7 @@ LoopBound *BuildLoopBound(Loop *L, ScalarEvolution *SE, ICmpInst *LoopBranch,
   Value *FinalValue = nullptr;
   Value *Op0 = LoopBranch->getOperand(0);
   Value *Op1 = LoopBranch->getOperand(1);
+  LLVM_DEBUG(dbgs() << "Op0 " << *Op0 << ", Op1 " << *Op1 << "\n");
 
   IVPos pos = LHS;
 
