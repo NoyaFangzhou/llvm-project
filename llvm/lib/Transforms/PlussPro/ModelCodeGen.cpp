@@ -695,6 +695,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->tab_count--;
     CodeGen->EmitCode("}");
   } else {
+#if 0
     CodeGen->EmitCode("void simulate_negative_binomial(int thread_cnt, uint64_t n, unordered_map<uint64_t, double> &dist)");
     CodeGen->EmitCode("{");
     CodeGen->tab_count++;
@@ -724,7 +725,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitCode("}");
     CodeGen->tab_count--;
     CodeGen->EmitCode("} // end of void simulate_negative_binomial()");
-#if 0
+
     CodeGen->EmitCode("void negative_binomial_approximation(double p, uint64_t n, unordered_map<uint64_t, double> &dist)");
   CodeGen->EmitCode("{");
   CodeGen->tab_count++;
@@ -785,7 +786,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
   CodeGen->tab_count--;
   CodeGen->EmitCode("} // end of void negative_binomial_approximation()");
 #endif
-    CodeGen->EmitCode("void no_share_distribute(unordered_map<uint64_t, double>& intra_thread_histogram, int thread_cnt=THREAD_NUM)");
+    CodeGen->EmitCode("void no_share_distribute(unordered_map<long, double>& intra_thread_histogram, int thread_cnt=THREAD_NUM)");
     CodeGen->EmitCode("{");
     CodeGen->tab_count++;
     // For TTC use start
@@ -794,7 +795,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitFunctionCall("pluss_parallel_histogram_update", {"merged_no_share_RI", "noshare_entry.first", "noshare_entry.second"});
     CodeGen->tab_count--;
     // For TTC use end
-    CodeGen->EmitStmt("unordered_map<uint64_t, double> dist");
+    CodeGen->EmitStmt("unordered_map<long, double> dist");
     CodeGen->EmitCode("for (auto entry : intra_thread_histogram) {");
     CodeGen->tab_count++;
     CodeGen->EmitCode("if (thread_cnt > 1) {");
@@ -802,7 +803,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitStmt("simulate_negative_binomial(thread_cnt, entry.first, dist)");
     CodeGen->EmitCode("for (auto dist_entry : dist) {");
     CodeGen->tab_count++;
-    CodeGen->EmitStmt("uint64_t ri_to_distribute = dist_entry.first");
+    CodeGen->EmitStmt("long ri_to_distribute = dist_entry.first");
     CodeGen->EmitStmt("pluss_histogram_update(ri_to_distribute, entry.second * dist_entry.second)");
     CodeGen->tab_count--;
     CodeGen->EmitCode("}");
@@ -817,7 +818,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitCode("}");
     CodeGen->tab_count--;
     CodeGen->EmitCode("} // end of void no_share_distribute()");
-    CodeGen->EmitCode("void share_distribute(unordered_map<int, unordered_map<uint64_t, double>>&inter_thread_histogram, int thread_cnt=THREAD_NUM)");
+    CodeGen->EmitCode("void share_distribute(unordered_map<int, unordered_map<long, double>>&inter_thread_histogram, int thread_cnt=THREAD_NUM)");
     CodeGen->EmitCode("{");
     CodeGen->tab_count++;
     // For TTC use begin
@@ -832,7 +833,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitCode("}");
     // For TTC use end
     CodeGen->EmitStmt("unordered_map<int, double> prob");
-    CodeGen->EmitStmt("unordered_map<uint64_t, double> dist");
+    CodeGen->EmitStmt("unordered_map<long, double> dist");
     CodeGen->EmitCode("for (auto share_entry : inter_thread_histogram) {");
     CodeGen->tab_count++;
     CodeGen->EmitStmt("int i = 1");
@@ -855,7 +856,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitStmt("simulate_negative_binomial(1.0/THREAD_NUM, reuse_entry.first, dist)");
     CodeGen->EmitCode("for (auto dist_entry: dist) {");
     CodeGen->tab_count++;
-    CodeGen->EmitStmt("uint64_t ri_to_distribute = dist_entry.first");
+    CodeGen->EmitStmt("long ri_to_distribute = dist_entry.first");
 #if 0
     CodeGen->EmitCode("if (entry.first <= 500) {");
   CodeGen->tab_count++;
@@ -886,7 +887,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitCode("}");
     CodeGen->EmitCode("for (auto bin : prob) {");
     CodeGen->tab_count++;
-    CodeGen->EmitStmt("uint64_t new_ri = (uint64_t)pow(2.0, bin.first-1)");
+    CodeGen->EmitStmt("long new_ri = (long)pow(2.0, bin.first-1)");
     CodeGen->EmitStmt("pluss_histogram_update(new_ri, bin.second*cnt_to_distribute)");
     CodeGen->tab_count--;
     CodeGen->EmitCode("}");
@@ -1399,7 +1400,7 @@ void ModelCodeGenWrapperPass::ModelGen(RefTNode *Src, LoopTNode *SrcParallelLoop
           EmitOneParallelIterationTripFormula(SrcParallelLoop);
     }
 
-    CodeGen->EmitStmt("uint64_t middle_accesses = 0");
+    CodeGen->EmitStmt("long middle_accesses = 0");
     if (SrcParallelLoop && SinkParallelLoop) {
       CodeGen->EmitComment("Src Loop " + SrcParallelLoop->getLoopStringExpr()
                            + ", Sink Loop " + SinkParallelLoop->getLoopStringExpr());
@@ -1560,7 +1561,7 @@ void ModelCodeGenWrapperPass::ModelGen(RefTNode *Src, LoopTNode *SrcParallelLoop
     }
   } else {
     // Reuse is in the sequential region, value not change
-    CodeGen->EmitStmt("uint64_t parallel_reuse = reuse");
+    CodeGen->EmitStmt("long parallel_reuse = reuse");
   }
 }
 
@@ -1697,17 +1698,17 @@ void ModelCodeGenWrapperPass::HeaderGen()
   CodeGen->EmitStmt("using namespace std");
   if ((EnableSampling && SamplingMethod == RANDOM_START) || EnablePerReference) {
     CodeGen->EmitStmt(
-        "unordered_map<string, uint64_t> iteration_traversed_map");
+        "unordered_map<string, long> iteration_traversed_map");
   } else {
-    CodeGen->EmitStmt("uint64_t max_iteration_count = 0");
+    CodeGen->EmitStmt("long max_iteration_count = 0");
   }
   if (InterleavingTechnique == 1) {
 //      CodeGen->EmitStmt("double model_time = 0.0");
-    CodeGen->EmitStmt("unordered_map<uint64_t, double> no_share_intra_thread_RI");
-    CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, double>> share_intra_thread_RI");
+    CodeGen->EmitStmt("unordered_map<long, double> no_share_intra_thread_RI");
+    CodeGen->EmitStmt("unordered_map<int, unordered_map<long, double>> share_intra_thread_RI");
     // for TTC use start
-    CodeGen->EmitStmt("unordered_map<uint64_t, double> merged_no_share_RI");
-    CodeGen->EmitStmt("unordered_map<uint64_t, double> merged_share_RI");
+    CodeGen->EmitStmt("unordered_map<long, double> merged_no_share_RI");
+    CodeGen->EmitStmt("unordered_map<long, double> merged_share_RI");
     // for TTC use end
   }
 }
@@ -1774,12 +1775,12 @@ void ModelCodeGenWrapperPass::MainFuncGen()
 #endif
   // random_start sampling must do per-ref analysis
   if ((EnableSampling && (SamplingMethod == RANDOM_START)) || EnablePerReference) {
-    CodeGen->EmitStmt("uint64_t max_iteration_count = 0, loop_cnt = 0");
+    CodeGen->EmitStmt("long max_iteration_count = 0, loop_cnt = 0");
     if (EnableParallelOpt) {
-      CodeGen->EmitStmt("unordered_map<uint64_t, double> histogram");
+      CodeGen->EmitStmt("unordered_map<long, double> histogram");
       for (auto node : SPSNodeNameTable) {
         if (RefTNode *ref = dynamic_cast<RefTNode *>(node.first)) {
-          CodeGen->EmitStmt("unordered_map<uint64_t, double> histogram_" + node.second);
+          CodeGen->EmitStmt("unordered_map<long, double> histogram_" + node.second);
         }
       }
     }
@@ -1926,16 +1927,16 @@ void ModelCodeGenWrapperPass::SamplerBodyGen(bool isPerReference)
     CodeGen->EmitStmt("int tid_to_run = 0, start_tid=0, working_threads=THREAD_NUM");
     CodeGen->EmitStmt("uint64_t addr = 0, loop_cnt = 0");
     if (InterleavingTechnique == 0) {
-      CodeGen->EmitStmt("uint64_t count = 0");
+      CodeGen->EmitStmt("long count = 0");
     } else {
-      CodeGen->EmitStmt("array<uint64_t, THREAD_NUM+1> count = {0}");
+      CodeGen->EmitStmt("array<long, THREAD_NUM+1> count = {0}");
     }
 #if 0
     CodeGen->EmitStmt("mt19937 rng(dev())");
 #endif
     CodeGen->EmitStmt("srand(time(NULL))");
     if (EnableSampling && SamplingMethod == BURSTY) {
-      CodeGen->EmitStmt("uint64_t access_cnt = 0");
+      CodeGen->EmitStmt("long access_cnt = 0");
       CodeGen->EmitComment("do reuse checking when enable is true");
       CodeGen->EmitStmt("bool enable = false");
     }
@@ -1944,10 +1945,10 @@ void ModelCodeGenWrapperPass::SamplerBodyGen(bool isPerReference)
       if (RefTNode *RefNode = dynamic_cast<RefTNode *>(entry.first)) {
         if (arrays.find(RefNode->getArrayNameString()) == arrays.end()) {
           if (InterleavingTechnique == UNIFORM_INTERLEAVING) {
-            CodeGen->EmitStmt("unordered_map<uint64_t, uint64_t> LAT_" +
+            CodeGen->EmitStmt("unordered_map<uint64_t, long> LAT_" +
                               RefNode->getArrayNameString());
           } else {
-            CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, uint64_t>> LAT_" +
+            CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, long>> LAT_" +
                               RefNode->getArrayNameString());
           }
           arrays.insert(RefNode->getArrayNameString());
@@ -1955,9 +1956,9 @@ void ModelCodeGenWrapperPass::SamplerBodyGen(bool isPerReference)
       }
     }
     if (InterleavingTechnique == UNIFORM_INTERLEAVING) {
-      CodeGen->EmitDebugInfo("unordered_map<uint64_t, Iteration *> LATIterMap");
+      CodeGen->EmitDebugInfo("unordered_map<long, Iteration *> LATIterMap");
     } else {
-      CodeGen->EmitDebugInfo("unordered_map<int, unordered_map<uint64_t, Iteration *>> LATIterMap");
+      CodeGen->EmitDebugInfo("unordered_map<int, unordered_map<long, Iteration *>> LATIterMap");
     }
     CodeGen->EmitDebugInfo("Iteration *access = nullptr");
     for (; topiter != getAnalysis<PlussLoopAnalysis::LoopAnalysisWrapperPass>()
@@ -2029,7 +2030,7 @@ void ModelCodeGenWrapperPass::SamplerBodyGen(bool isPerReference)
 #endif
         CodeGen->EmitComment(TargetRef->getRefExprString());
         if (EnableParallelOpt)
-          CodeGen->EmitCode("void sampler_" + ref.second + "(unordered_map<uint64_t, double> &histogram) {");
+          CodeGen->EmitCode("void sampler_" + ref.second + "(unordered_map<long, double> &histogram) {");
         else
           CodeGen->EmitCode("void sampler_" + ref.second + "() {");
         CodeGen->tab_count++;
@@ -2044,18 +2045,18 @@ void ModelCodeGenWrapperPass::SamplerBodyGen(bool isPerReference)
         CodeGen->EmitStmt("uint64_t addr = 0");
         CodeGen->EmitComment("global counter");
         if (InterleavingTechnique == 0) {
-          CodeGen->EmitStmt("uint64_t count = 0");
+          CodeGen->EmitStmt("long count = 0");
           CodeGen->EmitComment("count the access inside the parallel region");
-          CodeGen->EmitStmt("uint64_t parallel_count = 0");
+          CodeGen->EmitStmt("long parallel_count = 0");
           CodeGen->EmitStmt("bool enter_parallel_region = false");
           CodeGen->EmitComment("count the access inside the sequential region");
-          CodeGen->EmitStmt("uint64_t sequential_count = 0");
+          CodeGen->EmitStmt("long sequential_count = 0");
           CodeGen->EmitStmt("bool enter_sequential_region = false");
           CodeGen->EmitStmt("int sequential_src_parallel_sink_cnt = 0");
           CodeGen->EmitStmt("int parallel_src_sequential_sink_cnt = 0");
           CodeGen->EmitStmt("int sequential_src_sequential_sink_cnt = 0");
           CodeGen->EmitStmt("int parallel_src_parallel_sink_cnt = 0");
-          CodeGen->EmitStmt("unordered_map<Iteration *, uint64_t> sequentialLAT");
+          CodeGen->EmitStmt("unordered_map<Iteration *, long> sequentialLAT");
           LLVM_DEBUG(
               for (auto LoopNode : ModelValidateLoops) {
                 dbgs() << LoopNode->getLoopStringExpr() << "\n";
@@ -2063,12 +2064,12 @@ void ModelCodeGenWrapperPass::SamplerBodyGen(bool isPerReference)
           for (auto LoopNode : ModelValidateLoops) {
             CodeGen->EmitComment(LoopNode->getLoopStringExpr());
           }
-          CodeGen->EmitStmt("unordered_map<uint64_t, uint64_t> LAT");
-          CodeGen->EmitStmt("unordered_map<uint64_t, Iteration *> LATSampleIterMap");
+          CodeGen->EmitStmt("unordered_map<uint64_t, long> LAT");
+          CodeGen->EmitStmt("unordered_map<long, Iteration *> LATSampleIterMap");
         } else {
-          CodeGen->EmitStmt("array<uint64_t, THREAD_NUM+1> count = {0}");
-          CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, uint64_t>> LAT");
-          CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, Iteration *>> LATSampleIterMap");
+          CodeGen->EmitStmt("array<long, THREAD_NUM+1> count = {0}");
+          CodeGen->EmitStmt("unordered_map<int, unordered_map<uint64_t, long>> LAT");
+          CodeGen->EmitStmt("unordered_map<int, unordered_map<long, Iteration *>> LATSampleIterMap");
         }
 
 //        LLVM_DEBUG(
@@ -2722,11 +2723,11 @@ void ModelCodeGenWrapperPass::SamplerBodyGenImpl(SPSTNode *Root)
       }
       CodeGen->tab_count++;
       if (InterleavingTechnique == 0) {
-        CodeGen->EmitStmt("uint64_t reuse = count - LAT_" +
+        CodeGen->EmitStmt("long reuse = count - LAT_" +
                           RefNode->getArrayNameString() +
                           "[addr]");
       } else {
-        CodeGen->EmitStmt("uint64_t reuse = count[THREAD_NUM+1] - LAT_" +
+        CodeGen->EmitStmt("long reuse = count[THREAD_NUM+1] - LAT_" +
                           RefNode->getArrayNameString() +
                           "[THREAD_NUM+1][addr]");
       }
@@ -3357,7 +3358,7 @@ void ModelCodeGenWrapperPass::ParallelSamplerBodyGenImpl(SPSTNode *Root,
           pathIter++;
         }
         if (InterleavingTechnique == 0) {
-          CodeGen->EmitStmt("uint64_t reuse = count - LAT_" +
+          CodeGen->EmitStmt("long reuse = count - LAT_" +
                             RefNode->getArrayNameString() + "[addr]");
           CodeGen->EmitHashMacro("#if defined(DEBUG)");
 //          CodeGen->EmitCode("if (reuse > 0.9*(" + EmitOneParallelIterationTripFormula(QueryEngine->GetParallelLoopDominator(RefNode)) + ")) {");
@@ -3365,7 +3366,7 @@ void ModelCodeGenWrapperPass::ParallelSamplerBodyGenImpl(SPSTNode *Root,
           CodeGen->EmitStmt("cout << \"[\" << reuse << \"] \" << src->toString() << \" -> \" << access->toString() << endl");
           CodeGen->EmitHashMacro("#endif");
         } else {
-          CodeGen->EmitStmt("uint64_t reuse = count[tid_to_run] - LAT_" +
+          CodeGen->EmitStmt("long reuse = count[tid_to_run] - LAT_" +
                             RefNode->getArrayNameString() + "[tid_to_run][addr]");
           CodeGen->EmitHashMacro("#if defined(DEBUG)");
 //          CodeGen->EmitCode("if (reuse > 0.9*(" + EmitOneParallelIterationTripFormula(QueryEngine->GetParallelLoopDominator(RefNode)) + ")) {");
@@ -3659,6 +3660,12 @@ void ModelCodeGenWrapperPass::ParallelSamplerBodyGenImpl(SPSTNode *Root,
   QueryEngine->FindAllRefsInLoop(ParallelLoopNode, References);
   for (auto reference : References) {
     if (ArrayNameInLoop.find(reference->getArrayNameString()) == ArrayNameInLoop.end()) {
+      CodeGen->EmitComment("Access with no reuse are logged as RI = -1");
+      CodeGen->EmitCode("for (unsigned i = 0; i < LAT_"+reference->getArrayNameString()+".size(); i++) {");
+      CodeGen->tab_count++;
+      CodeGen->EmitFunctionCall("pluss_histogram_update", {"-1", "(double)LAT_"+reference->getArrayNameString()+"[i].size()"});
+      CodeGen->tab_count--;
+      CodeGen->EmitCode("}");
       CodeGen->EmitStmt("LAT_" + reference->getArrayNameString() + ".clear()");
       ArrayNameInLoop.insert(reference->getArrayNameString());
     }
@@ -3835,9 +3842,9 @@ void ModelCodeGenWrapperPass::PerRefSamplerBodyGenImpl(SPSTNode *Root,
 #endif
         CodeGen->EmitCode("if (start_reuse_search) {");
         CodeGen->tab_count++;
-        CodeGen->EmitStmt("count += (uint64_t)" + loop_acc_count_expr);
+        CodeGen->EmitStmt("count += (long)" + loop_acc_count_expr);
         if (EnableModelOpt && (InterleavingTechnique == 0) && QueryEngine->GetParallelLoopDominator(LoopNode))
-          CodeGen->EmitStmt("parallel_count += (uint64_t)" + loop_acc_count_expr);
+          CodeGen->EmitStmt("parallel_count += (long)" + loop_acc_count_expr);
 //        if (EnableParallelOpt) {
 //          CodeGen->EmitStmt("m.lock()");
 //          CodeGen->EmitFunctionCall("pluss_per_thread_bypass",
@@ -3891,9 +3898,9 @@ void ModelCodeGenWrapperPass::PerRefSamplerBodyGenImpl(SPSTNode *Root,
 #endif
         CodeGen->EmitCode("if (start_reuse_search) {");
         CodeGen->tab_count++;
-        CodeGen->EmitStmt("count += (uint64_t)" + true_branch_acc_count_expr);
+        CodeGen->EmitStmt("count += (long)" + true_branch_acc_count_expr);
         if (EnableModelOpt && (InterleavingTechnique == 0) && QueryEngine->GetParallelLoopDominator(Branch)) {
-          CodeGen->EmitStmt("parallel_count += (uint64_t)" +
+          CodeGen->EmitStmt("parallel_count += (long)" +
                             true_branch_acc_count_expr);
         }
 //        if (EnableParallelOpt) {
@@ -3932,9 +3939,9 @@ void ModelCodeGenWrapperPass::PerRefSamplerBodyGenImpl(SPSTNode *Root,
 #endif
         CodeGen->EmitCode("if (start_reuse_search) {");
         CodeGen->tab_count++;
-        CodeGen->EmitStmt("count += (uint64_t)" + false_branch_acc_count_expr);
+        CodeGen->EmitStmt("count += (long)" + false_branch_acc_count_expr);
         if (EnableModelOpt && (InterleavingTechnique == 0) && QueryEngine->GetParallelLoopDominator(Branch)) {
-          CodeGen->EmitStmt("parallel_count += (uint64_t)" +
+          CodeGen->EmitStmt("parallel_count += (long)" +
                             false_branch_acc_count_expr);
         }
 //        if (EnableParallelOpt) {
@@ -4148,12 +4155,12 @@ void ModelCodeGenWrapperPass::PerRefSamplerBodyGenImpl(SPSTNode *Root,
         if (InterleavingTechnique == 0) {
           CodeGen->EmitCode("if (LAT.find(addr) != LAT.end()) {");
           CodeGen->tab_count++;
-          CodeGen->EmitStmt("uint64_t reuse = count - LAT[addr]");
+          CodeGen->EmitStmt("long reuse = count - LAT[addr]");
           CodeGen->EmitStmt("Iteration *src = LATSampleIterMap[LAT[addr]]");
         } else {
           CodeGen->EmitCode("if (LAT[tid_to_run].find(addr) != LAT[tid_to_run].end()) {");
           CodeGen->tab_count++;
-          CodeGen->EmitStmt("uint64_t reuse = count[tid_to_run] - LAT[tid_to_run][addr]");
+          CodeGen->EmitStmt("long reuse = count[tid_to_run] - LAT[tid_to_run][addr]");
           CodeGen->EmitStmt("Iteration *src = LATSampleIterMap[tid_to_run][LAT[tid_to_run][addr]]");
           // compute the expression of one iteration of parallel loop
           // replace all induction variable names inside the expression with
@@ -5306,11 +5313,11 @@ void ModelCodeGenWrapperPass::PerRefParallelSamplerBodyGenImpl(SPSTNode *Root,
           if (InterleavingTechnique == 0) {
             CodeGen->EmitCode("if (LAT.find(addr) != LAT.end()) {");
             CodeGen->tab_count++;
-            CodeGen->EmitStmt("uint64_t reuse = count - LAT[addr]");
+            CodeGen->EmitStmt("long reuse = count - LAT[addr]");
           } else {
             CodeGen->EmitCode("if (LAT[tid_to_run].find(addr) != LAT[tid_to_run].end()) {");
             CodeGen->tab_count++;
-            CodeGen->EmitStmt("uint64_t reuse = count[tid_to_run] - LAT[tid_to_run][addr]");
+            CodeGen->EmitStmt("long reuse = count[tid_to_run] - LAT[tid_to_run][addr]");
           }
           // Iteration *src and *access forms a reuse
           // Find RefTNode of src and sink (TargetRef and RefNode)
@@ -7017,7 +7024,7 @@ void ModelCodeGenWrapperPass::ParallelSamplerBranchBodyGenImpl(DummyTNode *Branc
         codess.str("");
         CodeGen->EmitCode("if (LAT_"+Ref->getArrayNameString()+".find(addr) != LAT_"+Ref->getArrayNameString()+".end()) {");
         CodeGen->tab_count++;
-        CodeGen->EmitStmt("uint64_t reuse = count - LAT_"+Ref->getArrayNameString()+"[addr]");
+        CodeGen->EmitStmt("long reuse = count - LAT_"+Ref->getArrayNameString()+"[addr]");
         CodeGen->EmitHashMacro("#if defined(REUSE_DEBUG)");
         CodeGen->EmitCode("if (reuse >= 2048 && reuse <= 4095) {");
         CodeGen->tab_count++;
@@ -7147,7 +7154,7 @@ void ModelCodeGenWrapperPass::PerRefParallelSamplerBranchBodyGenImpl(DummyTNode 
           }
           CodeGen->EmitCode("if (LAT.find(addr) != LAT.end()) {");
           CodeGen->tab_count++;
-          CodeGen->EmitStmt("uint64_t reuse = count - LAT[addr]");
+          CodeGen->EmitStmt("long reuse = count - LAT[addr]");
           if (EnableParallelOpt) {
             CodeGen->EmitFunctionCall("pluss_parallel_histogram_update", {"histogram", "reuse", "1"});
           } else {
