@@ -661,8 +661,7 @@ bool ModelCodeGenProWrapperPass::canBeSimplifiedByFormula(SPSTNode *Node)
 
 void ModelCodeGenProWrapperPass::ModelUtilGen()
 {
-#if 0
-  CodeGen->EmitCode("void simulate_negative_binomial(int thread_cnt, uint64_t n, unordered_map<uint64_t, double> &dist)");
+  CodeGen->EmitCode("void simulate_negative_binomial(int thread_cnt, long n, unordered_map<long, double> &dist)");
   CodeGen->EmitCode("{");
   CodeGen->tab_count++;
   CodeGen->EmitDebugInfo("cout << \"Distribute thread-local Reuse: \" << n << endl");
@@ -670,7 +669,7 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
   CodeGen->EmitCode("if (n >= (4000. * (thread_cnt-1)) / thread_cnt) {");
   CodeGen->tab_count++;
   CodeGen->EmitStmt("int i = (int)log2(n)");
-  CodeGen->EmitStmt("uint64_t bin = (uint64_t)(pow(2.0, i))");
+  CodeGen->EmitStmt("long bin = (long)(pow(2.0, i))");
   CodeGen->EmitStmt("dist[THREAD_NUM*bin] = 1.0");
   CodeGen->EmitStmt("return");
   CodeGen->tab_count--;
@@ -691,7 +690,7 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
   CodeGen->EmitCode("}");
   CodeGen->tab_count--;
   CodeGen->EmitCode("} // end of void simulate_negative_binomial()");
-
+#if 0
   CodeGen->EmitCode("void negative_binomial_approximation(double p, uint64_t n, unordered_map<uint64_t, double> &dist)");
   CodeGen->EmitCode("{");
   CodeGen->tab_count++;
@@ -764,6 +763,17 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
   CodeGen->EmitStmt("unordered_map<long, double> dist");
   CodeGen->EmitCode("for (auto entry : histogram_to_distribute) {");
   CodeGen->tab_count++;
+  CodeGen->EmitCode("if (entry.first < 0) {");
+  CodeGen->tab_count++;
+  if (EnableParallelOpt) {
+    CodeGen->EmitFunctionCall("pluss_parallel_histogram_update",
+                              {"target_histogram", "entry.first", "entry.second"});
+  } else {
+    CodeGen->EmitFunctionCall("pluss_histogram_update", {"entry.first", "entry.second"});
+  }
+  CodeGen->EmitStmt("continue");
+  CodeGen->tab_count--;
+  CodeGen->EmitStmt("}");
   CodeGen->EmitCode("if (thread_cnt > 1) {");
   CodeGen->tab_count++;
   CodeGen->EmitStmt("simulate_negative_binomial(thread_cnt, entry.first, dist)");
@@ -771,9 +781,11 @@ void ModelCodeGenProWrapperPass::ModelUtilGen()
   CodeGen->tab_count++;
   CodeGen->EmitStmt("long ri_to_distribute = dist_entry.first");
   if (EnableParallelOpt) {
-    CodeGen->EmitStmt("pluss_parallel_histogram_update(target_histogram, ri_to_distribute, entry.second * dist_entry.second)");
+    CodeGen->EmitFunctionCall("pluss_parallel_histogram_update",
+                              {"target_histogram", "ri_to_distribute", "entry.second * dist_entry.second"});
   } else {
-    CodeGen->EmitStmt("pluss_histogram_update(ri_to_distribute, entry.second * dist_entry.second)");
+    CodeGen->EmitFunctionCall("pluss_histogram_update",
+                              {"ri_to_distribute", "entry.second * dist_entry.second"});
   }
   CodeGen->tab_count--;
   CodeGen->EmitCode("}");
@@ -1524,7 +1536,8 @@ void ModelCodeGenProWrapperPass::SamplerBodyGen(bool isPerReference)
               CodeGen->tab_count++;
               CodeGen->EmitCode("for (unsigned i = 0; i < LAT.size(); i++) {");
               CodeGen->tab_count++;
-              CodeGen->EmitFunctionCall("pluss_histogram_update", {"-1", "LAT[i].size()"});
+              CodeGen->EmitFunctionCall("pluss_parallel_histogram_update",
+                                        {"no_share_intra_thread_RI", "-1", "LAT[i].size()"});
               CodeGen->EmitStmt("LAT.clear();");
               CodeGen->tab_count--;
               CodeGen->EmitCode("}");
@@ -1603,7 +1616,8 @@ void ModelCodeGenProWrapperPass::SamplerBodyGen(bool isPerReference)
         CodeGen->tab_count++;
         CodeGen->EmitCode("for (unsigned i = 0; i < LAT.size(); i++) {");
         CodeGen->tab_count++;
-        CodeGen->EmitFunctionCall("pluss_histogram_update", {"-1", "LAT[i].size()"});
+        CodeGen->EmitFunctionCall("pluss_parallel_histogram_update",
+                                  {"no_share_intra_thread_RI", "-1", "LAT[i].size()"});
         CodeGen->EmitStmt("LAT.clear();");
         CodeGen->tab_count--;
         CodeGen->EmitCode("}");

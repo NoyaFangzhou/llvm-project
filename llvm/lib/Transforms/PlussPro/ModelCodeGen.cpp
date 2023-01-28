@@ -695,7 +695,6 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->tab_count--;
     CodeGen->EmitCode("}");
   } else {
-#if 0
     CodeGen->EmitCode("void simulate_negative_binomial(int thread_cnt, long n, unordered_map<long, double> &dist)");
     CodeGen->EmitCode("{");
     CodeGen->tab_count++;
@@ -725,7 +724,7 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitCode("}");
     CodeGen->tab_count--;
     CodeGen->EmitCode("} // end of void simulate_negative_binomial()");
-
+#if 0
     CodeGen->EmitCode("void negative_binomial_approximation(double p, uint64_t n, unordered_map<uint64_t, double> &dist)");
   CodeGen->EmitCode("{");
   CodeGen->tab_count++;
@@ -798,6 +797,13 @@ void ModelCodeGenWrapperPass::ModelUtilGen(bool isUniform)
     CodeGen->EmitStmt("unordered_map<long, double> dist");
     CodeGen->EmitCode("for (auto entry : intra_thread_histogram) {");
     CodeGen->tab_count++;
+    CodeGen->EmitCode('if (entry.first < 0) {');
+    CodeGen->tab_count++;
+    CodeGen->EmitFunctionCall("pluss_histogram_update",
+                              {"entry.first", "entry.second"});
+    CodeGen->EmitStmt("continue");
+    CodeGen->tab_count--;
+    CodeGen->EmitCode("}");
     CodeGen->EmitCode("if (thread_cnt > 1) {");
     CodeGen->tab_count++;
     CodeGen->EmitStmt("simulate_negative_binomial(thread_cnt, entry.first, dist)");
@@ -3662,7 +3668,8 @@ void ModelCodeGenWrapperPass::ParallelSamplerBodyGenImpl(SPSTNode *Root,
     if (ArrayNameInLoop.find(reference->getArrayNameString()) == ArrayNameInLoop.end()) {
       CodeGen->EmitComment("Addresses in " + reference->getArrayNameString() + " with no data reuse will be marked as -1");
       CodeGen->EmitCode("for (unsigned i = 0; i < LAT_" + reference->getArrayNameString() + ".size(); i++) {");
-      CodeGen->EmitFunctionCall("pluss_histogram_update", {"-1", "LAT_" + reference->getArrayNameString() + "[i].size()"});
+      CodeGen->EmitFunctionCall("pluss_parallel_histogram_update",
+                                {"no_share_intra_thread_RI", "-1", "LAT_" + reference->getArrayNameString() + "[i].size()"});
       CodeGen->EmitCode("}");
       CodeGen->EmitStmt("LAT_" + reference->getArrayNameString() + ".clear()");
       ArrayNameInLoop.insert(reference->getArrayNameString());
